@@ -1,7 +1,11 @@
 {
+  "name": "rok-1685-scraper",
+  "version": "1.0.0",
+  "description": "Scraping Statmaster for K1685",
+  "main": "sync.js",
   "dependencies": {
+    "@supabase/supabase-js": "^2.40.0",
     "axios": "^1.6.0",
-    "cheerio": "^1.0.0-rc.12",
-    "@supabase/supabase-js": "^2.38.0"
+    "cheerio": "^1.0.0-rc.12"
   }
 }
