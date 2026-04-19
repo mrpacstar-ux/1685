@@ -70,7 +70,6 @@
     </div>
 
     <script>
-        // REPLACE THESE WITH YOUR PUBLIC KEYS FROM SUPABASE SETTINGS
         const SUPABASE_URL = 'https://fqnlvclorxwovabydhjg.supabase.co'; 
         const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZxbmx2Y2xvcnh3b3ZhYnlkaGpnIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzY1ODQzMjcsImV4cCI6MjA5MjE2MDMyN30.DVbF-eOLeTaKfAkAbZuSCII6hcsBnthpuXITtfgtODE';
 
@@ -78,33 +77,46 @@
 
         async function loadData() {
             // 1. Load Kingdom Stats
-            const { data: stats } = await _supabase.from('kingdom_stats').select('*').single();
-            if (stats) {
-                document.getElementById('stat-power').innerText = stats.power;
-                document.getElementById('stat-kills').innerText = stats.kills;
-                document.getElementById('kvk-btn').href = stats.kvk_link;
-            }
+            try {
+                const { data: stats } = await _supabase.from('kingdom_stats').select('*').single();
+                if (stats) {
+                    document.getElementById('stat-power').innerText = stats.power || 0;
+                    document.getElementById('stat-kills').innerText = stats.kills || 0;
+                    document.getElementById('kvk-btn').href = stats.kvk_link || "#";
+                }
+            } catch (e) { console.log("Stats not found"); }
 
-            // 2. Load Player Rankings
-            const { data: players } = await _supabase
+            // 2. Load Player Rankings (Sorted by Score Descending)
+            const { data: players, error } = await _supabase
                 .from('player_rankings')
                 .select('*')
-                .order('score', { ascending: false })
-                .limit(20);
+                .order('score', { ascending: false }) // <--- HIGHEST SCORE AT TOP
+                .limit(50); // Increased limit to show more players
+
+            if (error) {
+                console.error("Supabase Error:", error);
+                return;
+            }
 
             const tbody = document.getElementById('ranking-body');
-            tbody.innerHTML = players.map((p, i) => `
-                <tr class="hover:bg-white/5 transition">
-                    <td class="p-4 font-bold text-gray-500">#${i + 1}</td>
-                    <td class="p-4">
-                        <div class="font-bold text-white">${p.name}</div>
-                        <div class="text-[10px] text-gray-500">ID: ${p.player_id}</div>
-                    </td>
-                    <td class="p-4 text-center">${p.launched}</td>
-                    <td class="p-4 text-center">${p.joined}</td>
-                    <td class="p-4 text-center font-bold text-orange-400">${p.score}</td>
-                </tr>
-            `).join('');
+            
+            if (players && players.length > 0) {
+                tbody.innerHTML = players.map((p, i) => `
+                    <tr class="hover:bg-white/5 transition">
+                        <td class="p-4 font-bold text-gray-500">#${i + 1}</td>
+                        <td class="p-4">
+                            <!-- Show the Name in Gold/Bold, and the ID in smaller grey text -->
+                            <div class="font-bold text-white text-lg">${p.name || 'Unknown'}</div>
+                            <div class="text-[10px] text-gray-500 tracking-wider">ID: ${p.player_id}</div>
+                        </td>
+                        <td class="p-4 text-center font-semibold text-gray-300">${p.launched || 0}</td>
+                        <td class="p-4 text-center font-semibold text-gray-300">${p.joined || 0}</td>
+                        <td class="p-4 text-center font-bold text-orange-400 text-xl">${p.score || 0}</td>
+                    </tr>
+                `).join('');
+            } else {
+                tbody.innerHTML = `<tr><td colspan="5" class="p-10 text-center text-gray-500">No data found in database.</td></tr>`;
+            }
         }
 
         loadData();
