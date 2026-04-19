@@ -5,57 +5,58 @@ const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SER
 const RALLY_URL = "https://www.statsmasterdatahub.com/1685/rallydata/c5eaf4fxkl3vykx";
 
 async function syncRallyRankings() {
-    console.log("Launching browser to bypass protection...");
+    console.log("Launching browser...");
     const browser = await chromium.launch({ headless: true });
     const page = await browser.newPage();
 
     try {
-        // Navigate and wait for the content
         await page.goto(RALLY_URL, { waitUntil: 'networkidle', timeout: 60000 });
+        console.log("Page loaded. Waiting for table content...");
         
-        // Give it a few seconds to ensure the table fully renders
-        await page.waitForTimeout(5000);
+        // Wait for the table rows to appear
+        await page.waitForSelector('tr', { timeout: 15000 });
 
         const players = await page.evaluate(() => {
             const results = [];
-            // Target elements containing "ID:"
-            const cards = Array.from(document.querySelectorAll('div')).filter(el => el.innerText.includes('ID:'));
+            // Target table rows
+            const rows = Array.from(document.querySelectorAll('tr'));
 
-            cards.forEach(card => {
-                const text = card.innerText;
-                const nameEl = card.querySelector('.truncate, .font-bold');
-                const idMatch = text.match(/ID:\s*(\d+)/);
+            rows.forEach(row => {
+                const cells = Array.from(row.querySelectorAll('td'));
                 
-                // Regex to find all numbers in the text
-                const numbers = text.match(/\b\d+\b/g) || [];
-
-                if (idMatch) {
-                    results.push({
-                        player_id: idMatch[1],
-                        name: nameEl ? nameEl.innerText.trim() : "Unknown",
-                        launched: parseInt(numbers[1]) || 0,
-                        joined: parseInt(numbers[2]) || 0,
-                        total: parseInt(numbers[3]) || 0,
-                        score: parseInt(numbers[4]) || 0,
-                        updated_at: new Date().toISOString()
-                    });
+                // We need rows that have at least 5 columns (Rank, Player, Launched, Joined, Total, Score)
+                if (cells.length >= 5) {
+                    const playerCell = cells[1].innerText; // Second column has Name and ID
+                    const idMatch = playerCell.match(/ID:\s*(\d+)/);
+                    
+                    // Clean the name: remove the ID and the rank number
+                    let name = playerCell.split('\n').find(line => !line.includes('ID:') && isNaN(line.trim())) || "Unknown";
+                    
+                    if (idMatch) {
+                        results.push({
+                            player_id: idMatch[1],
+                            name: name.trim(),
+                            // Target specific columns based on the Statmaster layout
+                            launched: parseInt(cells[2].innerText.replace(/,/g, '')) || 0,
+                            joined: parseInt(cells[3].innerText.replace(/,/g, '')) || 0,
+                            total: parseInt(cells[4].innerText.replace(/,/g, '')) || 0,
+                            score: parseInt(cells[5]?.innerText.replace(/,/g, '')) || 0,
+                            updated_at: new Date().toISOString()
+                        });
+                    }
                 }
             });
             return results;
         });
 
-        console.log(`Browser found ${players.length} players total.`);
+        console.log(`Scraper found ${players.length} players with stats.`);
 
         if (players.length > 0) {
-            // --- DEDUPLICATION LOGIC ---
-            // This creates a Map using player_id as the key. 
-            // If the same ID appears twice, the newer one overwrites the old one.
+            // Deduplicate by ID
             const uniquePlayers = Array.from(
                 new Map(players.map(p => [p.player_id, p])).values()
             );
             
-            console.log(`Filtered down to ${uniquePlayers.length} unique players.`);
-
             const { error } = await supabase
                 .from('player_rankings')
                 .upsert(uniquePlayers, { onConflict: 'player_id' });
@@ -63,14 +64,12 @@ async function syncRallyRankings() {
             if (error) {
                 console.error("Supabase Error:", error.message);
             } else {
-                console.log("Success! Data pushed to Supabase.");
+                console.log(`Success! Synced ${uniquePlayers.length} unique players to Supabase.`);
             }
-        } else {
-            console.log("No players found in the browser session.");
         }
 
     } catch (err) {
-        console.error("Browser Error:", err.message);
+        console.error("Scraper Error:", err.message);
     } finally {
         await browser.close();
     }
