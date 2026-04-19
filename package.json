@@ -9,3 +9,9 @@
     "cheerio": "^1.0.0-rc.12"
   }
 }
+{
+  "dependencies": {
+    "playwright": "^1.40.0",
+    "@supabase/supabase-js": "^2.40.0"
+  }
+}
