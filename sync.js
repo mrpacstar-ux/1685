@@ -7,72 +7,56 @@ const RALLY_URL = "https://www.statsmasterdatahub.com/1685/rallydata/c5eaf4fxkl3
 async function syncRallyRankings() {
     console.log("Launching browser...");
     const browser = await chromium.launch({ headless: true });
-    const context = await browser.newContext();
-    const page = await context.newPage();
+    const page = await browser.newPage();
 
     try {
-        console.log(`Navigating to ${RALLY_URL}...`);
         await page.goto(RALLY_URL, { waitUntil: 'networkidle', timeout: 60000 });
 
-        console.log("Selecting 'This Week' filter...");
+        // 1. Click "This Week"
         const weekButton = page.getByText(/This Week/i).last();
-        
-        try {
-            await weekButton.click();
-            console.log("Clicked 'This Week'. Waiting 8 seconds for the full list...");
-            // Weekly lists are huge, give it plenty of time to finish the spinny loader
-            await page.waitForTimeout(8000); 
-        } catch (e) {
-            console.log("Filter click skipped (might be default).");
-        }
+        await weekButton.click();
+        await page.waitForTimeout(5000); // Wait for the table to populate
 
-        // Instead of waiting for a specific selector, we just wait for the page to have "ID:" anywhere
-        await page.waitForFunction(() => document.body.innerText.includes('ID:'), { timeout: 30000 });
-        
-        console.log("Scrolling to capture all players...");
-        await page.evaluate(() => window.scrollTo(0, document.body.scrollHeight));
-        await page.waitForTimeout(2000);
+        // 2. Extract directly from the table elements in the browser
+        const players = await page.evaluate(() => {
+            const data = [];
+            // Target every row in the table body
+            const rows = document.querySelectorAll('table tbody tr');
+            
+            rows.forEach(row => {
+                const cells = row.querySelectorAll('td');
+                if (cells.length >= 5) {
+                    // Extract text content from cells
+                    // Column 0: Rank, 1: Player+ID, 2: Launched, 3: Joined, 4: Total, 5: Rally Score
+                    const playerCell = cells[1].innerText;
+                    const idMatch = playerCell.match(/\d{7,10}/); // Find the 7-10 digit ID
 
-        const content = await page.innerText('body');
-
-        // This Regex is tuned to match exactly what you see in the logs
-        const playerPattern = /([^\n]+)\s+ID:\s*(\d+)\s+([\d,]+)\s+([\d,]+)\s+([\d,]+)\s+([\d,]+)/g;
-        let match;
-        const players = [];
-
-        while ((match = playerPattern.exec(content)) !== null) {
-            const nameRaw = match[1].trim();
-            // Clean up: removes rank numbers from start and "ID:" from end
-            const cleanName = nameRaw.replace(/^\d+/, '').replace(/ID:.*$/, '').trim();
-
-            players.push({
-                player_id: match[2],
-                name: cleanName || "Unknown",
-                launched: parseInt(match[3].replace(/,/g, '')) || 0,
-                joined: parseInt(match[4].replace(/,/g, '')) || 0,
-                total: parseInt(match[5].replace(/,/g, '')) || 0,
-                score: parseInt(match[6].replace(/,/g, '')) || 0,
-                updated_at: new Date().toISOString()
+                    if (idMatch) {
+                        data.push({
+                            player_id: idMatch[0],
+                            name: playerCell.replace(idMatch[0], '').replace('ID:', '').trim(),
+                            launched: parseInt(cells[2].innerText.replace(/[^0-9]/g, '')) || 0,
+                            joined: parseInt(cells[3].innerText.replace(/[^0-9]/g, '')) || 0,
+                            total: parseInt(cells[4].innerText.replace(/[^0-9]/g, '')) || 0,
+                            score: parseInt(cells[5].innerText.replace(/[^0-9]/g, '')) || 0,
+                            updated_at: new Date().toISOString()
+                        });
+                    }
+                }
             });
-        }
+            return data;
+        });
 
-        console.log(`Found ${players.length} players total.`);
+        console.log(`Found ${players.length} players via DOM extraction.`);
 
         if (players.length > 0) {
-            const uniquePlayers = Array.from(new Map(players.map(p => [p.player_id, p])).values());
-            console.log(`Syncing ${uniquePlayers.length} unique players...`);
-
             const { error } = await supabase
                 .from('player_rankings')
-                .upsert(uniquePlayers, { onConflict: 'player_id' });
+                .upsert(players, { onConflict: 'player_id' });
 
             if (error) throw error;
-            console.log("Success! Check your website now.");
-        } else {
-            console.log("Regex failed to grab players. Page snapshot (first 200 chars):");
-            console.log(content.substring(0, 200));
+            console.log("Data synced successfully!");
         }
-
     } catch (err) {
         console.error("Scraper Error:", err.message);
     } finally {
