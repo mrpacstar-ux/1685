@@ -5,47 +5,52 @@ const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SER
 const RALLY_URL = "https://www.statsmasterdatahub.com/1685/rallydata/c5eaf4fxkl3vykx";
 
 async function syncRallyRankings() {
-    console.log("Launching browser in Sniffer Mode...");
+    console.log("Launching browser...");
     const browser = await chromium.launch({ headless: true });
     const context = await browser.newContext();
     const page = await context.newPage();
 
-    let jsonData = null;
-
-    // Eavesdrop on all network requests the page makes
-    page.on('response', async (response) => {
-        const url = response.url();
-        // Look for the specific data endpoint (usually contains 'rallydata' or 'json')
-        if (url.includes('rallydata') && response.status() === 200) {
-            try {
-                const text = await response.text();
-                // Check if this response looks like the player data we need
-                if (text.includes('ID:')) {
-                    jsonData = text;
-                    console.log("Found the data source!");
-                }
-            } catch (e) { /* Not the response we wanted */ }
-        }
-    });
-
     try {
+        console.log(`Navigating to ${RALLY_URL}...`);
         await page.goto(RALLY_URL, { waitUntil: 'networkidle', timeout: 60000 });
-        
-        // Wait a few seconds for the background data fetch to finish
-        await page.waitForTimeout(5000);
 
-        // If sniffing failed, fall back to a "force-read" of the entire page body
-        const content = jsonData || await page.innerText('body');
+        // 1. Force a click on "This Week"
+        console.log("Selecting 'This Week' filter...");
+        // Using a regex for 'This Week' to handle potential capitalization/spacing differences
+        const weekButton = await page.getByText(/This Week/i);
         
-        // This regex looks for patterns like: Name, ID: 12345, 10, 20, 30...
+        if (await weekButton.isVisible()) {
+            await weekButton.click();
+            console.log("Clicked 'This Week'. Waiting for data to refresh...");
+            // Give the site 3 seconds to process the filter change
+            await page.waitForTimeout(3000); 
+        } else {
+            console.log("Could not find 'This Week' button. Proceeding with default view...");
+        }
+
+        // 2. Wait for the player rows to appear
+        await page.waitForSelector('text=ID:', { timeout: 20000 });
+        
+        // Scroll to the bottom to ensure "Lazy Loading" captures all 260+ players
+        await page.evaluate(() => window.scrollTo(0, document.body.scrollHeight));
+        await page.waitForTimeout(2000);
+
+        // 3. Extract the text content
+        const content = await page.innerText('body');
+
+        // 4. Regex Pattern to capture Name, ID, and the 4 stat numbers
         const playerPattern = /([^\n]+)\s+ID:\s*(\d+)\s+(\d+)\s+(\d+)\s+(\d+)\s+(\d+)/g;
         let match;
         const players = [];
 
         while ((match = playerPattern.exec(content)) !== null) {
+            const nameRaw = match[1].trim();
+            // Clean up rank numbers (e.g., "1Siłvєr" -> "Siłvєr")
+            const cleanName = nameRaw.replace(/^\d+/, '').trim();
+
             players.push({
                 player_id: match[2],
-                name: match[1].trim().replace(/^\d+\s+/, ''), // Clean leading rank numbers
+                name: cleanName || "Unknown",
                 launched: parseInt(match[3]) || 0,
                 joined: parseInt(match[4]) || 0,
                 total: parseInt(match[5]) || 0,
@@ -54,9 +59,10 @@ async function syncRallyRankings() {
             });
         }
 
-        console.log(`Found ${players.length} players via network/regex scan.`);
+        console.log(`Found ${players.length} players for the week.`);
 
         if (players.length > 0) {
+            // Deduplicate
             const uniquePlayers = Array.from(new Map(players.map(p => [p.player_id, p])).values());
             
             const { error } = await supabase
@@ -64,14 +70,13 @@ async function syncRallyRankings() {
                 .upsert(uniquePlayers, { onConflict: 'player_id' });
 
             if (error) throw error;
-            console.log("Success! Data synced to Supabase.");
+            console.log(`Success! ${uniquePlayers.length} records updated in Supabase.`);
         } else {
-            console.log("No data matches found. Printing first 100 chars for debug:");
-            console.log(content.substring(0, 100));
+            console.log("Pattern match failed. Check if 'This Week' view layout is different.");
         }
 
     } catch (err) {
-        console.error("Critical Error:", err.message);
+        console.error("Scraper Error:", err.message);
     } finally {
         await browser.close();
     }
