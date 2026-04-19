@@ -26,3 +26,10 @@ jobs:
         env:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
+          
+- name: Install Dependencies
+        run: npm install
+      - name: Install Playwright Browsers
+        run: npx playwright install chromium --with-deps
+      - name: Run Script
+        run: node sync.js
