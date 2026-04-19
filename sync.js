@@ -7,56 +7,86 @@ const RALLY_URL = "https://www.statsmasterdatahub.com/1685/rallydata/c5eaf4fxkl3
 async function syncRallyRankings() {
     console.log("Launching browser...");
     const browser = await chromium.launch({ headless: true });
-    const page = await browser.newPage();
+    const context = await browser.newContext();
+    const page = await context.newPage();
 
     try {
+        console.log(`Navigating to ${RALLY_URL}...`);
         await page.goto(RALLY_URL, { waitUntil: 'networkidle', timeout: 60000 });
 
-        // 1. Click "This Week"
+        console.log("Selecting 'This Week'...");
         const weekButton = page.getByText(/This Week/i).last();
         await weekButton.click();
-        await page.waitForTimeout(5000); // Wait for the table to populate
+        
+        // Wait for the data to actually appear in the UI
+        console.log("Waiting for data load...");
+        await page.waitForSelector('text=ID:', { timeout: 20000 });
+        
+        // Scroll slowly to trigger lazy loading
+        await page.evaluate(async () => {
+            for (let i = 0; i < 5; i++) {
+                window.scrollBy(0, 1000);
+                await new Promise(r => setTimeout(r, 500));
+            }
+        });
 
-        // 2. Extract directly from the table elements in the browser
         const players = await page.evaluate(() => {
-            const data = [];
-            // Target every row in the table body
-            const rows = document.querySelectorAll('table tbody tr');
-            
-            rows.forEach(row => {
-                const cells = row.querySelectorAll('td');
-                if (cells.length >= 5) {
-                    // Extract text content from cells
-                    // Column 0: Rank, 1: Player+ID, 2: Launched, 3: Joined, 4: Total, 5: Rally Score
-                    const playerCell = cells[1].innerText;
-                    const idMatch = playerCell.match(/\d{7,10}/); // Find the 7-10 digit ID
+            const results = [];
+            // Find every element that contains "ID:"
+            const idElements = Array.from(document.querySelectorAll('*')).filter(el => 
+                el.children.length === 0 && el.innerText.includes('ID:')
+            );
 
+            idElements.forEach(idEl => {
+                // Find the container that holds this player's data (the row/card)
+                const container = idEl.closest('div[class*="row"], div[class*="item"], tr') || idEl.parentElement.parentElement;
+                
+                if (container) {
+                    const text = container.innerText;
+                    const lines = text.split('\n').map(s => s.trim()).filter(s => s.length > 0);
+                    
+                    // Statmaster structure usually: [Rank], [Name], [ID: 123], [Stat1], [Stat2]...
+                    const idMatch = text.match(/ID:\s*(\d+)/);
+                    
                     if (idMatch) {
-                        data.push({
-                            player_id: idMatch[0],
-                            name: playerCell.replace(idMatch[0], '').replace('ID:', '').trim(),
-                            launched: parseInt(cells[2].innerText.replace(/[^0-9]/g, '')) || 0,
-                            joined: parseInt(cells[3].innerText.replace(/[^0-9]/g, '')) || 0,
-                            total: parseInt(cells[4].innerText.replace(/[^0-9]/g, '')) || 0,
-                            score: parseInt(cells[5].innerText.replace(/[^0-9]/g, '')) || 0,
+                        // Find all standalone numbers in the container
+                        const numbers = text.match(/\b\d+[\d,]*\b/g) || [];
+                        // Filter out the ID from our numbers list
+                        const stats = numbers.filter(n => n !== idMatch[1] && n.length < 8);
+
+                        results.push({
+                            player_id: idMatch[1],
+                            // Name is usually the line before the ID or the first non-numeric line
+                            name: lines.find(l => !l.includes('ID:') && isNaN(l.replace(/,/g,''))) || "Unknown",
+                            launched: parseInt(stats[0]?.replace(/,/g,'')) || 0,
+                            joined: parseInt(stats[1]?.replace(/,/g,'')) || 0,
+                            total: parseInt(stats[2]?.replace(/,/g,'')) || 0,
+                            score: parseInt(stats[3]?.replace(/,/g,'')) || 0,
                             updated_at: new Date().toISOString()
                         });
                     }
                 }
             });
-            return data;
+            return results;
         });
 
-        console.log(`Found ${players.length} players via DOM extraction.`);
+        console.log(`Scraper identified ${players.length} player entries.`);
 
         if (players.length > 0) {
+            // Deduplicate
+            const uniquePlayers = Array.from(new Map(players.map(p => [p.player_id, p])).values());
+            console.log(`Syncing ${uniquePlayers.length} unique players...`);
+
             const { error } = await supabase
                 .from('player_rankings')
-                .upsert(players, { onConflict: 'player_id' });
+                .upsert(uniquePlayers, { onConflict: 'player_id' });
 
             if (error) throw error;
-            console.log("Data synced successfully!");
+            console.log("Success! Database updated.");
+        } else {
+            console.log("Failed to extract data. The page structure is likely protected or non-standard.");
         }
+
     } catch (err) {
         console.error("Scraper Error:", err.message);
     } finally {
