@@ -10,51 +10,63 @@ async function syncRallyRankings() {
     const page = await browser.newPage();
 
     try {
-        // Navigate and wait for the content to actually load
-        await page.goto(RALLY_URL, { waitUntil: 'networkidle' });
+        // Navigate and wait for the content
+        await page.goto(RALLY_URL, { waitUntil: 'networkidle', timeout: 60000 });
         
-        // Give it an extra 5 seconds in case of a Cloudflare "Wait" screen
+        // Give it a few seconds to ensure the table fully renders
         await page.waitForTimeout(5000);
 
-        // Extract data directly from the browser context
         const players = await page.evaluate(() => {
             const results = [];
-            // We look for elements containing "ID:"
+            // Target elements containing "ID:"
             const cards = Array.from(document.querySelectorAll('div')).filter(el => el.innerText.includes('ID:'));
 
             cards.forEach(card => {
-                // Try to find the name (usually a bold or large text near the top of the card)
-                const nameEl = card.querySelector('.truncate, .font-bold');
                 const text = card.innerText;
+                const nameEl = card.querySelector('.truncate, .font-bold');
                 const idMatch = text.match(/ID:\s*(\d+)/);
                 
-                // Find all standalone numbers (Stats)
+                // Regex to find all numbers in the text
                 const numbers = text.match(/\b\d+\b/g) || [];
 
-                if (nameEl && idMatch) {
+                if (idMatch) {
                     results.push({
                         player_id: idMatch[1],
-                        name: nameEl.innerText.trim(),
+                        name: nameEl ? nameEl.innerText.trim() : "Unknown",
                         launched: parseInt(numbers[1]) || 0,
                         joined: parseInt(numbers[2]) || 0,
                         total: parseInt(numbers[3]) || 0,
                         score: parseInt(numbers[4]) || 0,
-                        updated_at: new Date()
+                        updated_at: new Date().toISOString()
                     });
                 }
             });
             return results;
         });
 
-        console.log(`Browser found ${players.length} players.`);
+        console.log(`Browser found ${players.length} players total.`);
 
         if (players.length > 0) {
+            // --- DEDUPLICATION LOGIC ---
+            // This creates a Map using player_id as the key. 
+            // If the same ID appears twice, the newer one overwrites the old one.
+            const uniquePlayers = Array.from(
+                new Map(players.map(p => [p.player_id, p])).values()
+            );
+            
+            console.log(`Filtered down to ${uniquePlayers.length} unique players.`);
+
             const { error } = await supabase
                 .from('player_rankings')
-                .upsert(players, { onConflict: 'player_id' });
+                .upsert(uniquePlayers, { onConflict: 'player_id' });
 
-            if (error) throw error;
-            console.log("Success! Data pushed to Supabase.");
+            if (error) {
+                console.error("Supabase Error:", error.message);
+            } else {
+                console.log("Success! Data pushed to Supabase.");
+            }
+        } else {
+            console.log("No players found in the browser session.");
         }
 
     } catch (err) {
