@@ -2,51 +2,65 @@ const axios = require('axios');
 const cheerio = require('cheerio');
 const { createClient } = require('@supabase/supabase-js');
 
-const supabase = createClient('YOUR_SUPABASE_URL', 'YOUR_SUPABASE_SERVICE_KEY');
+// Access Environment Variables
+const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_KEY);
+
 const RALLY_URL = "https://www.statsmasterdatahub.com/1685/rallydata/c5eaf4fxkl3vykx";
 
 async function syncRallyRankings() {
     try {
-        const { data } = await axios.get(RALLY_URL);
+        console.log("Starting scrape of:", RALLY_URL);
+        const { data } = await axios.get(RALLY_URL, {
+            headers: { 'User-Agent': 'Mozilla/5.0' } // Helps bypass simple blocks
+        });
+        
         const $ = cheerio.load(data);
         const players = [];
 
-        // We target the mobile-view cards or the desktop rows. 
-        // Based on your snippet, we'll grab the player cards:
-        $('.bg-gray-800\\/50').each((i, el) => {
-            const name = $(el).find('.truncate').text().trim();
-            const id = $(el).find('.text-\\[10px\\]').text().replace('ID: ', '').trim();
-            
-            // Stats are in a grid of 4. We grab them by index.
-            const stats = $(el).find('.text-base.font-bold');
-            const launched = $(stats[0]).text().trim();
-            const joined = $(stats[1]).text().trim();
-            const total = $(stats[2]).text().trim();
-            const score = $(stats[3]).text().trim();
+        // Find the player cards - looking for the specific class from your snippet
+        const cards = $('.bg-gray-800\\/50');
+        console.log(`Found ${cards.length} player cards on page.`);
 
-            if (name) {
+        if (cards.length === 0) {
+            throw new Error("Could not find any player cards. The website layout might have changed.");
+        }
+
+        cards.each((i, el) => {
+            const name = $(el).find('.truncate').first().text().trim();
+            const idRaw = $(el).find('.text-\\[10px\\]').text();
+            const idMatch = idRaw.match(/ID:\s*(\d+)/);
+            const id = idMatch ? idMatch[1] : null;
+            
+            const stats = $(el).find('.text-base.font-bold');
+            
+            if (name && id) {
                 players.push({
                     player_id: id,
                     name: name,
-                    launched: parseInt(launched),
-                    joined: parseInt(joined),
-                    total: parseInt(total),
-                    score: parseInt(score),
+                    launched: parseInt($(stats[0]).text()) || 0,
+                    joined: parseInt($(stats[1]).text()) || 0,
+                    total: parseInt($(stats[2]).text()) || 0,
+                    score: parseInt($(stats[3]).text()) || 0,
                     updated_at: new Date()
                 });
             }
         });
 
-        // Upsert into Supabase (updates existing IDs, inserts new ones)
-        const { error } = await supabase
-            .from('player_rankings')
-            .upsert(players, { onConflict: 'player_id' });
+        console.log(`Parsed ${players.length} players successfully.`);
 
-        if (error) throw error;
-        console.log(`Successfully synced ${players.length} players.`);
+        if (players.length > 0) {
+            const { error } = await supabase
+                .from('player_rankings')
+                .upsert(players, { onConflict: 'player_id' });
+
+            if (error) throw error;
+            console.log("Database upload successful!");
+        }
 
     } catch (err) {
-        console.error("Scrape Error:", err.message);
+        console.error("CRASH ERROR:");
+        console.error(err.message);
+        process.exit(1); // Tells GitHub that the job failed
     }
 }
 
