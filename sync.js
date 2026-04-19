@@ -11,32 +11,28 @@ async function syncRallyRankings() {
 
     try {
         await page.goto(RALLY_URL, { waitUntil: 'networkidle', timeout: 60000 });
-        console.log("Page loaded. Waiting for table content...");
-        
-        // Wait for the table rows to appear
-        await page.waitForSelector('tr', { timeout: 15000 });
+        await page.waitForTimeout(5000); // Wait for dynamic content
 
         const players = await page.evaluate(() => {
             const results = [];
-            // Target table rows
-            const rows = Array.from(document.querySelectorAll('tr'));
+            // Target all table rows (excluding the header)
+            const rows = document.querySelectorAll('tbody tr');
 
             rows.forEach(row => {
-                const cells = Array.from(row.querySelectorAll('td'));
-                
-                // We need rows that have at least 5 columns (Rank, Player, Launched, Joined, Total, Score)
-                if (cells.length >= 5) {
-                    const playerCell = cells[1].innerText; // Second column has Name and ID
-                    const idMatch = playerCell.match(/ID:\s*(\d+)/);
-                    
-                    // Clean the name: remove the ID and the rank number
-                    let name = playerCell.split('\n').find(line => !line.includes('ID:') && isNaN(line.trim())) || "Unknown";
-                    
+                const cells = row.querySelectorAll('td');
+                if (cells.length >= 4) {
+                    // Column 1 usually contains Player Name + ID
+                    const playerText = cells[1].innerText;
+                    const idMatch = playerText.match(/(\d{8,10})/); // Looks for 8-10 digit IDs
+
                     if (idMatch) {
+                        const playerId = idMatch[1];
+                        // Name is usually the line NOT containing the ID
+                        const name = playerText.split('\n').find(l => !l.includes(playerId) && l.trim().length > 1) || "Unknown";
+                        
                         results.push({
-                            player_id: idMatch[1],
+                            player_id: playerId,
                             name: name.trim(),
-                            // Target specific columns based on the Statmaster layout
                             launched: parseInt(cells[2].innerText.replace(/,/g, '')) || 0,
                             joined: parseInt(cells[3].innerText.replace(/,/g, '')) || 0,
                             total: parseInt(cells[4].innerText.replace(/,/g, '')) || 0,
@@ -49,30 +45,23 @@ async function syncRallyRankings() {
             return results;
         });
 
-        console.log(`Scraper found ${players.length} players with stats.`);
+        console.log(`Found ${players.length} players. Cleaning...`);
 
-        if (players.length > 0) {
-            // Deduplicate by ID
-            const uniquePlayers = Array.from(
-                new Map(players.map(p => [p.player_id, p])).values()
-            );
-            
+        // Deduplicate
+        const uniquePlayers = Array.from(new Map(players.map(p => [p.player_id, p])).values());
+
+        if (uniquePlayers.length > 0) {
             const { error } = await supabase
                 .from('player_rankings')
                 .upsert(uniquePlayers, { onConflict: 'player_id' });
 
-            if (error) {
-                console.error("Supabase Error:", error.message);
-            } else {
-                console.log(`Success! Synced ${uniquePlayers.length} unique players to Supabase.`);
-            }
+            if (error) console.error("Supabase Error:", error.message);
+            else console.log("Success! Data synced.");
         }
-
     } catch (err) {
         console.error("Scraper Error:", err.message);
     } finally {
         await browser.close();
     }
 }
-
 syncRallyRankings();
