@@ -1,35 +1,30 @@
 name: RoK Data Sync
 on:
   schedule:
-    - cron: '*/30 * * * *' # Runs every 30 minutes
-  workflow_dispatch:      # Allows you to click "Run Workflow" manually
+    - cron: '*/30 * * * *'
+  workflow_dispatch:
 jobs:
   build:
     runs-on: ubuntu-latest
     env:
-      # This explicitly tells GitHub to use the Node 24 engine for this job
       FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
     steps:
       - name: Checkout Repository
-        uses: actions/checkout@v4 # Upgraded from v3
+        uses: actions/checkout@v4
 
       - name: Setup Node.js 24
-        uses: actions/setup-node@v4 # Upgraded from v3
+        uses: actions/setup-node@v4
         with:
           node-version: '24'
 
       - name: Install Dependencies
         run: npm install
 
+      - name: Install Playwright Browsers
+        run: npx playwright install chromium --with-deps
+
       - name: Run Scraper
         run: node sync.js
         env:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
-          
-- name: Install Dependencies
-        run: npm install
-      - name: Install Playwright Browsers
-        run: npx playwright install chromium --with-deps
-      - name: Run Script
-        run: node sync.js
