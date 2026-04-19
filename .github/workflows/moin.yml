@@ -11,9 +11,15 @@ jobs:
       - name: Install Node
         uses: actions/setup-node@v4
         with:
-          node-version: '20' # Specifically set to 20
-      - run: npm install
-      - run: node sync.js
+          node-version: '24' # Future-proofed to Node 24
+      
+      - name: Install Dependencies
+        run: npm install
+
+      - name: Run Scraper
+        run: node sync.js
         env:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
+          # This line opts you into the new Node 24 runner logic
+          FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
