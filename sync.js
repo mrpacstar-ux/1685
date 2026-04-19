@@ -1,3 +1,16 @@
+// Fix for ReferenceError: File is not defined in older Node environments
+if (typeof File === 'undefined') {
+    global.File = class extends Blob {
+        constructor(parts, filename, options = {}) {
+            super(parts, options);
+            this.name = filename;
+            this.lastModified = options.lastModified || Date.now();
+        }
+    };
+}
+
+const axios = require('axios');
+// ... rest of your code ...
 const axios = require('axios');
 const cheerio = require('cheerio');
 const { createClient } = require('@supabase/supabase-js');
