@@ -1,0 +1,113 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Kingdom 1685 | Dashboard</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Cinzel:wght@400;700&family=Open+Sans:wght@400;600&display=swap');
+        :root { --rok-gold: #c5a059; --panel-bg: rgba(20, 18, 15, 0.95); }
+        body { 
+            background: #000; 
+            color: #e5e5e5; 
+            font-family: 'Open Sans', sans-serif;
+            background-image: url('https://www.transparenttextures.com/patterns/dark-matter.png');
+        }
+        .cinzel { font-family: 'Cinzel', serif; }
+        .rok-panel { 
+            background: var(--panel-bg); 
+            border: 2px solid #3d332d; 
+            border-radius: 4px; 
+            box-shadow: 0 10px 25px rgba(0,0,0,0.5);
+        }
+        .gold-text { color: var(--rok-gold); }
+        .header-gradient { background: linear-gradient(to right, #2a211b, #1a1613); border-bottom: 1px solid var(--rok-gold); }
+    </style>
+</head>
+<body class="p-4 md:p-8">
+    <div class="max-w-6xl mx-auto">
+        <!-- TOP STATS BAR -->
+        <div class="rok-panel header-gradient p-6 mb-6 flex flex-wrap justify-around items-center gap-4">
+            <div class="text-center">
+                <h1 class="cinzel text-4xl font-bold text-red-700">1685</h1>
+                <p class="text-[10px] tracking-widest gold-text">GLORY • HONOR • UNITY</p>
+            </div>
+            <div class="text-center">
+                <p class="text-xs uppercase text-gray-500">Live Power</p>
+                <p id="stat-power" class="cinzel text-2xl gold-text">--</p>
+            </div>
+            <div class="text-center">
+                <p class="text-xs uppercase text-gray-500">Kill Points</p>
+                <p id="stat-kills" class="cinzel text-2xl gold-text">--</p>
+            </div>
+            <a id="kvk-btn" href="#" target="_blank" class="bg-blue-900 border border-blue-400 px-6 py-2 rounded cinzel text-sm hover:bg-blue-800 transition">View Full KvK</a>
+        </div>
+
+        <!-- RANKINGS TABLE -->
+        <div class="rok-panel overflow-hidden">
+            <div class="header-gradient p-4">
+                <h2 class="cinzel gold-text text-xl">Top Rally Commanders (This Week)</h2>
+            </div>
+            <div class="overflow-x-auto">
+                <table class="w-full text-left">
+                    <thead class="bg-black/50 text-[10px] uppercase gold-text cinzel">
+                        <tr>
+                            <th class="p-4">Rank</th>
+                            <th class="p-4">Player</th>
+                            <th class="p-4 text-center">Launched</th>
+                            <th class="p-4 text-center">Joined</th>
+                            <th class="p-4 text-center text-orange-400">Total Score</th>
+                        </tr>
+                    </thead>
+                    <tbody id="ranking-body" class="divide-y divide-gray-800">
+                        <!-- Data will load here -->
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // REPLACE THESE WITH YOUR PUBLIC KEYS FROM SUPABASE SETTINGS
+        const SUPABASE_URL = 'YOUR_SUPABASE_URL'; 
+        const SUPABASE_ANON_KEY = 'YOUR_SUPABASE_ANON_KEY';
+
+        const _supabase = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+        async function loadData() {
+            // 1. Load Kingdom Stats
+            const { data: stats } = await _supabase.from('kingdom_stats').select('*').single();
+            if (stats) {
+                document.getElementById('stat-power').innerText = stats.power;
+                document.getElementById('stat-kills').innerText = stats.kills;
+                document.getElementById('kvk-btn').href = stats.kvk_link;
+            }
+
+            // 2. Load Player Rankings
+            const { data: players } = await _supabase
+                .from('player_rankings')
+                .select('*')
+                .order('score', { ascending: false })
+                .limit(20);
+
+            const tbody = document.getElementById('ranking-body');
+            tbody.innerHTML = players.map((p, i) => `
+                <tr class="hover:bg-white/5 transition">
+                    <td class="p-4 font-bold text-gray-500">#${i + 1}</td>
+                    <td class="p-4">
+                        <div class="font-bold text-white">${p.name}</div>
+                        <div class="text-[10px] text-gray-500">ID: ${p.player_id}</div>
+                    </td>
+                    <td class="p-4 text-center">${p.launched}</td>
+                    <td class="p-4 text-center">${p.joined}</td>
+                    <td class="p-4 text-center font-bold text-orange-400">${p.score}</td>
+                </tr>
+            `).join('');
+        }
+
+        loadData();
+    </script>
+</body>
+</html>
