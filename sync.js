@@ -1,97 +1,92 @@
 const { chromium } = require('playwright');
 const { createClient } = require('@supabase/supabase-js');
 
-const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_KEY);
-const RALLY_URL = "https://www.statsmasterdatahub.com/1685/rallydata/c5eaf4fxkl3vykx";
+// --- CONFIGURATION ---
+const SUPABASE_URL = 'YOUR_SUPABASE_URL';
+const SUPABASE_KEY = 'YOUR_SUPABASE_SERVICE_ROLE_KEY'; // Use Service Role for backend scripts
 
-async function syncRallyRankings() {
-    console.log("Launching browser...");
+const FORT_LINK = "https://www.statsmasterdatahub.com/1685/rallydata/c5eaf4fxkl3vykx";
+const KVK_LINK = "https://www.statsmasterdatahub.com/c13048/dashboard/ymheormqhugrg1a";
+
+const supabase = createClient(SUPABASE_URL, SUPABASE_KEY);
+
+async function runSync() {
+    console.log("🚀 Launching browser...");
     const browser = await chromium.launch({ headless: true });
-    const context = await browser.newContext();
+    const context = await browser.newContext({
+        userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.0.0 Safari/537.36'
+    });
     const page = await context.newPage();
 
     try {
-        console.log(`Navigating to ${RALLY_URL}...`);
-        await page.goto(RALLY_URL, { waitUntil: 'networkidle', timeout: 60000 });
-
-        console.log("Selecting 'This Week'...");
-        const weekButton = page.getByText(/This Week/i).last();
-        await weekButton.click();
+        // --- 1. SCRAPE BARBARIAN FORTS ---
+        console.log(`📡 Navigating to Fort Data...`);
+        await page.goto(FORT_LINK, { waitUntil: 'networkidle' });
         
-        // Wait for the data to actually appear in the UI
-        console.log("Waiting for data load...");
-        await page.waitForSelector('text=ID:', { timeout: 20000 });
-        
-        // Scroll slowly to trigger lazy loading
-        await page.evaluate(async () => {
-            for (let i = 0; i < 5; i++) {
-                window.scrollBy(0, 1000);
-                await new Promise(r => setTimeout(r, 500));
-            }
-        });
+        // Wait for the specific data ID span to ensure the list is rendered
+        await page.waitForSelector('span:has-text("ID:")', { timeout: 20000 });
 
-        const players = await page.evaluate(() => {
-            const results = [];
-            // Find every element that contains "ID:"
-            const idElements = Array.from(document.querySelectorAll('*')).filter(el => 
-                el.children.length === 0 && el.innerText.includes('ID:')
-            );
+        const fortData = await page.evaluate(() => {
+            // Find all containers that look like rally entries
+            // Statmaster typically uses a flex or grid structure for these lists
+            const entries = Array.from(document.querySelectorAll('div.flex.justify-between, .grid-cols-1'));
+            
+            return entries.map(el => {
+                const text = el.innerText;
+                const levelMatch = text.match(/Level\s*(\d+)/i);
+                const coordsMatch = text.match(/X:\s*(\d+)\s*Y:\s*(\d+)/i);
+                const playerMatch = text.match(/ID:\s*(\d+)/i); // Fallback to ID if name is hard to parse
 
-            idElements.forEach(idEl => {
-                // Find the container that holds this player's data (the row/card)
-                const container = idEl.closest('div[class*="row"], div[class*="item"], tr') || idEl.parentElement.parentElement;
-                
-                if (container) {
-                    const text = container.innerText;
-                    const lines = text.split('\n').map(s => s.trim()).filter(s => s.length > 0);
-                    
-                    // Statmaster structure usually: [Rank], [Name], [ID: 123], [Stat1], [Stat2]...
-                    const idMatch = text.match(/ID:\s*(\d+)/);
-                    
-                    if (idMatch) {
-                        // Find all standalone numbers in the container
-                        const numbers = text.match(/\b\d+[\d,]*\b/g) || [];
-                        // Filter out the ID from our numbers list
-                        const stats = numbers.filter(n => n !== idMatch[1] && n.length < 8);
-
-                        results.push({
-                            player_id: idMatch[1],
-                            // Name is usually the line before the ID or the first non-numeric line
-                            name: lines.find(l => !l.includes('ID:') && isNaN(l.replace(/,/g,''))) || "Unknown",
-                            launched: parseInt(stats[0]?.replace(/,/g,'')) || 0,
-                            joined: parseInt(stats[1]?.replace(/,/g,'')) || 0,
-                            total: parseInt(stats[2]?.replace(/,/g,'')) || 0,
-                            score: parseInt(stats[3]?.replace(/,/g,'')) || 0,
-                            updated_at: new Date().toISOString()
-                        });
-                    }
+                if (levelMatch && coordsMatch) {
+                    return {
+                        level: levelMatch[1],
+                        coords: coordsMatch[0],
+                        player: playerMatch ? playerMatch[1] : 'Unknown',
+                        updated_at: new Date().toISOString()
+                    };
                 }
-            });
-            return results;
+                return null;
+            }).filter(item => item !== null);
         });
 
-        console.log(`Scraper identified ${players.length} player entries.`);
-
-        if (players.length > 0) {
-            // Deduplicate
-            const uniquePlayers = Array.from(new Map(players.map(p => [p.player_id, p])).values());
-            console.log(`Syncing ${uniquePlayers.length} unique players...`);
-
-            const { error } = await supabase
-                .from('player_rankings')
-                .upsert(uniquePlayers, { onConflict: 'player_id' });
-
-            if (error) throw error;
-            console.log("Success! Database updated.");
-        } else {
-            console.log("Failed to extract data. The page structure is likely protected or non-standard.");
+        console.log(`✅ Found ${fortData.length} forts. Updating Supabase...`);
+        if (fortData.length > 0) {
+            // Clear old forts and insert new ones
+            await supabase.from('fort_tracking').delete().neq('level', '0'); 
+            await supabase.from('fort_tracking').insert(fortData);
         }
 
-    } catch (err) {
-        console.error("Scraper Error:", err.message);
+        // --- 2. SCRAPE KVK DASHBOARD ---
+        console.log(`📡 Navigating to KvK Dashboard...`);
+        await page.goto(KVK_LINK, { waitUntil: 'networkidle' });
+
+        const kvkStats = await page.evaluate(() => {
+            // Look for Power and Kill numbers. 
+            // We use a broad search for strings ending in 'B' or 'M' near labels.
+            const bodyText = document.body.innerText;
+            const powerMatch = bodyText.match(/([\d.]+B)\s*Power/i) || bodyText.match(/Power\s*([\d.]+B)/i);
+            const killsMatch = bodyText.match(/([\d.]+B)\s*Kills/i) || bodyText.match(/Kills\s*([\d.]+B)/i);
+
+            return {
+                power: powerMatch ? powerMatch[1] : 'N/A',
+                kills: killsMatch ? killsMatch[1] : 'N/A'
+            };
+        });
+
+        console.log(`✅ Stats Found: Power: ${kvkStats.power}, Kills: ${kvkStats.kills}`);
+        
+        await supabase.from('kingdom_stats').update({
+            power: kvkStats.power,
+            kills: kvkStats.kills,
+            last_sync: new Date().toISOString()
+        }).eq('id', 1); // Assuming your kingdom row is ID 1
+
+    } catch (error) {
+        console.error("❌ Scraper Error:", error.message);
     } finally {
         await browser.close();
+        console.log("🏁 Sync process finished.");
     }
 }
 
-syncRallyRankings();
+runSync();
