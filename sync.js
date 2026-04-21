@@ -12,43 +12,41 @@ const supabase = createClient(SUPABASE_URL, SUPABASE_KEY);
 async function runSync() {
     console.log("🚀 Launching browser...");
     const browser = await chromium.launch({ headless: true });
-    const context = await browser.newContext({ viewport: { width: 1280, height: 800 } });
+    const context = await browser.newContext({ viewport: { width: 1920, height: 1080 } });
     const page = await context.newPage();
 
     try {
         // --- 1. SCRAPE BARBARIAN FORTS ---
         console.log(`📡 Navigating to Fort Data...`);
         await page.goto(FORT_LINK, { waitUntil: 'networkidle' });
+        await page.waitForTimeout(5000); 
 
-        // Statmaster often requires clicking the 'This Week' tab to show data
-        console.log("🖱️ Attempting to select 'This Week' filter...");
-        const filterBtn = page.locator('button:has-text("This Week"), div:has-text("This Week")').first();
-        if (await filterBtn.isVisible()) {
-            await filterBtn.click();
-            await page.waitForTimeout(2000); // Wait for filter animation
-        }
+        // Statmaster fix: Some tables only load after a scroll
+        await page.evaluate(() => window.scrollTo(0, document.body.scrollHeight));
+        await page.waitForTimeout(2000);
 
-        console.log("⏳ Scanning for rally entries...");
+        console.log("⏳ Scanning for all text containing coordinates...");
         const fortData = await page.evaluate(() => {
-            // Target the specific data rows in the Statmaster hub
-            const rows = Array.from(document.querySelectorAll('div')).filter(el => 
-                el.innerText.includes('X:') && el.innerText.includes('Y:')
-            );
-            
-            return rows.map(el => {
+            // Find every single DIV on the page and check if it has X: and Y:
+            const allElements = Array.from(document.querySelectorAll('div, tr, li'));
+            const results = [];
+
+            allElements.forEach(el => {
                 const text = el.innerText;
-                const lvl = text.match(/Level\s*(\d+)/i);
-                const coords = text.match(/X:\s*\d+\s*Y:\s*\d+/i);
-                if (lvl && coords) {
-                    return {
-                        level: lvl[1],
-                        coords: coords[0].replace(/\s+/g, ' '),
-                        player: text.split('\n')[0].trim(),
+                const coordsMatch = text.match(/X:\s*(\d+)\s*Y:\s*(\d+)/i);
+                // Look for Level nearby
+                const levelMatch = text.match(/Lvl\s*(\d+)|Level\s*(\d+)/i);
+
+                if (coordsMatch) {
+                    results.push({
+                        level: levelMatch ? (levelMatch[1] || levelMatch[2]) : '5', 
+                        coords: `X:${coordsMatch[1]} Y:${coordsMatch[2]}`,
+                        player: text.split('\n')[0].substring(0, 20).trim(), // Grab first line
                         updated_at: new Date().toISOString()
-                    };
+                    });
                 }
-                return null;
-            }).filter(Boolean);
+            });
+            return results;
         });
 
         const uniqueForts = Array.from(new Map(fortData.map(f => [f.coords, f])).values());
@@ -57,28 +55,26 @@ async function runSync() {
         if (uniqueForts.length > 0) {
             await supabase.from('fort_tracking').delete().neq('level', '-1'); 
             await supabase.from('fort_tracking').insert(uniqueForts);
+        } else {
+            // DEBUG: Save a screenshot if nothing found so you can see what went wrong
+            await page.screenshot({ path: 'fort_debug.png' });
+            console.log("📸 Screenshot saved as fort_debug.png (Check your GitHub Action artifacts)");
         }
 
         // --- 2. SCRAPE KVK DASHBOARD ---
         console.log(`📡 Navigating to KvK Dashboard...`);
         await page.goto(KVK_LINK, { waitUntil: 'networkidle' });
-        await page.waitForTimeout(5000); // Give the dashboard charts time to load
+        await page.waitForTimeout(7000); // Dashboards are slow
 
         const kvkStats = await page.evaluate(() => {
-            const findStat = (label) => {
-                const elements = Array.from(document.querySelectorAll('div, span, p'));
-                const target = elements.find(el => el.innerText.trim() === label);
-                if (target && target.parentElement) {
-                    // Look for a number (like 8.27B) in the same container
-                    const val = target.parentElement.innerText.match(/[\d.]+([BMK])/);
-                    return val ? val[0] : 'N/A';
-                }
-                return 'N/A';
-            };
+            const body = document.body.innerText;
+            // More aggressive Regex for Kill Points
+            const pMatch = body.match(/Power\s*[:\n\s]*([\d.]+[BMK])/i) || body.match(/([\d.]+[BMK])\s*Power/i);
+            const kMatch = body.match(/Kill\s*Points\s*[:\n\s]*([\d.]+[BMK])/i) || body.match(/([\d.]+[BMK])\s*Kill/i);
 
             return {
-                power: findStat('Power'),
-                kills: findStat('Kill Points') || findStat('Kills')
+                power: pMatch ? pMatch[1] : 'N/A',
+                kills: kMatch ? kMatch[1] : 'N/A'
             };
         });
 
