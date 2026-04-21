@@ -2,8 +2,8 @@ const { chromium } = require('playwright');
 const { createClient } = require('@supabase/supabase-js');
 
 // --- CONFIGURATION ---
-const SUPABASE_URL = 'YOUR_SUPABASE_URL';
-const SUPABASE_KEY = 'YOUR_SUPABASE_SERVICE_ROLE_KEY'; // Use Service Role for backend scripts
+const SUPABASE_URL = 'https://fqnlvclorxwovabydhjg.supabase.co';
+const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZxbmx2Y2xvcnh3b3ZhYnlkaGpnIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc3NjU4NDMyNywiZXhwIjoyMDkyMTYwMzI3fQ.e7MZI90VtYVfiL5C1hwItctT1S0RGQvqOg-s7W8TWmY'; // Use Service Role for backend scripts
 
 const FORT_LINK = "https://www.statsmasterdatahub.com/1685/rallydata/c5eaf4fxkl3vykx";
 const KVK_LINK = "https://www.statsmasterdatahub.com/c13048/dashboard/ymheormqhugrg1a";
