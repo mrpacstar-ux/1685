@@ -927,7 +927,7 @@ incremental approach.
 
 import tkinter as tk
 from tkinter import ttk, scrolledtext, messagebox
-import threading, time, json, os, hmac, hashlib, uuid, math
+import threading, time, json, os, hmac, hashlib, uuid, math, csv
 import urllib.request, urllib.parse
 import urllib.error
 from http.client import IncompleteRead
@@ -4842,6 +4842,15 @@ class HermesBotApp:
         self._adaptive_engine   = AdaptiveTriggerEngine()
         self._fee_maker         = MAKER_FEE_PCT   # MEXC Futures API maker fee (0.04%, effective May 1 2026)
         self._fee_taker         = TAKER_FEE_PCT   # MEXC Futures taker fee
+        # ── Per-session trade CSV (for A/B testing — see TUNED_THRESHOLD_FLOOR test) ──
+        _sessions_dir = _HOME / "sessions"
+        try:
+            _sessions_dir.mkdir(parents=True, exist_ok=True)
+        except OSError:
+            pass
+        self._session_csv_path = str(_sessions_dir / (
+            f"session_{datetime.now().strftime('%Y-%m-%d_%H%M%S')}_{BOT_VERSION}.csv"))
+        self._session_csv_header_written = False
         self._dead_pairs     = set()
         self._live_balance   = None   # cached MEXC account data
         self._balance_fetch  = 0      # timestamp of last fetch  # pairs that returned code 1001
@@ -10142,6 +10151,36 @@ class HermesBotApp:
         self._cancel_mexc_tpsl(pos, ak, asc)
         self._log_event(f"↕ MEXC SL synced → ${pos.stop_loss:,.4f}", CYAN)
 
+    def _write_trade_csv(self, pos, status, pnl, exit_price, r_multiple=None):
+        """Append a closed/partial trade to this session's CSV for A/B analysis.
+        Pure observability — failures here must never affect trading."""
+        try:
+            row = {
+                "timestamp": datetime.now(timezone.utc).isoformat(),
+                "pair": pos.symbol,
+                "dir": pos.direction,
+                "lev": pos.leverage,
+                "entry": pos.entry_price,
+                "exit": exit_price,
+                "size_usdt": pos.size_usdt,
+                "pnl_usd": pnl,
+                "pnl_pct": round((pnl / pos.margin) * 100, 4) if pos.margin else 0,
+                "r_multiple": r_multiple if r_multiple is not None else "",
+                "exit_reason": status,
+                "selective_entry_on": (self._tuned_entry_var.get()
+                                       if hasattr(self, "_tuned_entry_var") else ""),
+                "threshold_floor": TUNED_THRESHOLD_FLOOR,
+            }
+            is_new = self._session_csv_header_written is False
+            with open(self._session_csv_path, "a", encoding="utf-8", newline="") as f:
+                w = csv.DictWriter(f, fieldnames=list(row.keys()))
+                if is_new:
+                    w.writeheader()
+                    self._session_csv_header_written = True
+                w.writerow(row)
+        except Exception:
+            pass
+
     def _partial_take_profit(self, pos, px, dry, ak, asc):
         """v2.8-TUNED: close a fraction of `pos` at the current price to bank
         profit partway to TP, then move the stop to breakeven. Fires once per
@@ -10228,6 +10267,7 @@ class HermesBotApp:
             "opened_at": pos.opened_at,
             "closed_at": datetime.now(timezone.utc).isoformat(),
         })
+        self._write_trade_csv(pos, "PARTIAL TP", pnl, px)
 
         # ── Shrink the live position to the remaining fraction ───────────────
         pos.margin    = round(pos.margin * (1 - frac), 6)
@@ -10599,6 +10639,13 @@ class HermesBotApp:
             "open_fee_rate": open_fee_rate,
             "close_fee_rate": close_fee_rate,
             "total_fee_usdt": round(fee, 6)})
+        try:
+            _risk = abs(pos.entry_price - pos.stop_loss)
+            _r_mult = round(((ep - pos.entry_price) if d == "LONG" else (pos.entry_price - ep))
+                            / _risk, 3) if _risk else None
+        except Exception:
+            _r_mult = None
+        self._write_trade_csv(pos, _status_label, pnl, ep, _r_mult)
 
         # ── Adaptive engine: log trade outcome ───────────────────────────────
         self._adaptive_engine.log_trade(pnl >= 0)
