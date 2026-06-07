@@ -1981,7 +1981,11 @@ _LOG_TAG_MAP = {GREEN: "g", RED: "r", BLUE: "b", AMBER: "a",
 # Entry-selectivity (the v2.8 confluence bonus / trigger gate / conviction gap)
 # is exposed as a UI toggle ("Selective entry" checkbox). This is its DEFAULT
 # state. OFF = original v2.7.5 entry behaviour (more trades, less filtering).
-TUNED_SELECTIVE_ENTRY_DEFAULT = True
+# Defaulted OFF: live testing showed the bot was already drought-prone (HOLD
+# streaks of 150+ cycles) — extra entry filters would only choke trade flow
+# further without addressing the actual symptom (rare TP hits / frequent SL).
+# Flip ON only if the lowered threshold floor causes too much chop to come in.
+TUNED_SELECTIVE_ENTRY_DEFAULT = False
 
 # Conviction gap: the winning side must out-score the other by at least this
 # many points to qualify. Softened from the first-cut 0.8 so it trims genuine
