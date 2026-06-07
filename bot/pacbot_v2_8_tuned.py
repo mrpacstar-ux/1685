@@ -2005,6 +2005,16 @@ TUNED_PARTIAL_TP_ENABLE   = True
 TUNED_PARTIAL_TP_PROGRESS = 0.50   # fire at 50% of the way to TP
 TUNED_PARTIAL_TP_FRACTION = 0.50   # close 50% of the position
 
+# ── THRESHOLD TEST ────────────────────────────────────────────────────────────
+# The adaptive engine's lower clamp was hard-coded to max(4.0, base-1.5). With
+# base_threshold 4.5 that pins the floor at 4.0, yet live logs showed the best
+# candidates topping out at 3.0-3.5 — so even after a 150-cycle HOLD streak the
+# drought/streak relaxation could never lower the bar enough to fire. This knob
+# replaces the hard 4.0 with a configurable floor so the relaxation can actually
+# reach reachable scores. Lowered to 3.0 for the test; raise back toward 4.0 if
+# this proves to let too much chop through.
+TUNED_THRESHOLD_FLOOR = 3.0
+
 FM  = ("Consolas", 10)
 FMS = ("Consolas", 9)
 FMB = ("Consolas", 10, "bold")
@@ -2178,7 +2188,7 @@ class AdaptiveTriggerEngine:
             drought_relax = min(0.9, ((int(drought_hrs) // 2) * 0.3))
             thr -= drought_relax
 
-        lo = max(4.0, self.base_threshold - 1.5)
+        lo = max(TUNED_THRESHOLD_FLOOR, self.base_threshold - 1.5)
         hi = self.base_threshold + 2.0
         return max(lo, min(hi, round(thr, 1)))
 
