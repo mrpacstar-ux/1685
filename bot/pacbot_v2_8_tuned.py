@@ -31,6 +31,36 @@ CHANGELOG
 ================================================================================
 v2.8-TUNED — TRADING-LOGIC TUNING PASS (this file is a fork of v2.7.5)
 ================================================================================
+  All v2.8 knobs live in the "v2.8-TUNED CONFIG" block near the top of the file.
+
+  #TUNED-EXIT-RR  CLOSER TP (the real fix for "rarely hits TP, mostly SL").
+              _open_position() now pins TP to a reachable multiple of net risk
+              (TUNED_RR_TARGET = 1.6:1) instead of the old ~2.6-3:1 table that
+              price rarely travelled far enough to reach. This both tightens TP
+              when it was too far AND widens it when fees made it too tight.
+
+  #TUNED-EXIT-SL  WIDER ATR-BASED SL. The SL floor is now TUNED_ATR_SL_MULT
+              (2.0) × ATR instead of 1.5×, so ordinary wick noise — especially
+              on low-volatility pairs like TRX — can't stop the trade out before
+              it has room to work.
+
+  #TUNED-PARTIAL-TP  PARTIAL TAKE-PROFIT + BREAKEVEN. New _partial_take_profit()
+              closes TUNED_PARTIAL_TP_FRACTION (50%) of the position once it is
+              TUNED_PARTIAL_TP_PROGRESS (50%) of the way to TP, banks that PnL
+              (reduce-only order in live, simulated in paper), shrinks the
+              tracked position, and moves the stop to breakeven. A trade that
+              moves your way now locks in real profit instead of round-tripping
+              back to the stop. Fires once per position; never on hedge legs or
+              the force_close path. Cleaned up with the other per-pid state.
+
+  #TUNED-ENTRY-TOGGLE  The entry-selectivity changes below are now behind a UI
+              checkbox ("Selective entry") and the selective_entry= parameter on
+              compute_signals(). ON  = fewer, higher-conviction trades; OFF =
+              original v2.7.5 behaviour (more, lower-quality trades). Default
+              from TUNED_SELECTIVE_ENTRY_DEFAULT. The conviction gap was also
+              softened to TUNED_CONVICTION_GAP (0.6, was 0.8) so it trims chop
+              without choking trade flow.
+
   #TUNED-CONFLUENCE  Added a confluence "stacking" bonus (+1.0) to compute_signals()
               for both LONG and SHORT: fires only when a real trigger (EMA/MACD
               cross or genuine RSI extreme) AND an oscillator extreme (StochRSI
@@ -1945,6 +1975,36 @@ WS_SYM_TO_BOT = {v: k for k, v in MEXC_API_SYMBOL.items()}
 _LOG_TAG_MAP = {GREEN: "g", RED: "r", BLUE: "b", AMBER: "a",
                 PURPLE: "p", CYAN: "c", TEAL: "t", DIM: "dim", MUTED: "mu"}
 
+# ══════════════════════════════════════════════════════════════════════════════
+#  v2.8-TUNED CONFIG — all tuning knobs in one place
+# ══════════════════════════════════════════════════════════════════════════════
+# Entry-selectivity (the v2.8 confluence bonus / trigger gate / conviction gap)
+# is exposed as a UI toggle ("Selective entry" checkbox). This is its DEFAULT
+# state. OFF = original v2.7.5 entry behaviour (more trades, less filtering).
+TUNED_SELECTIVE_ENTRY_DEFAULT = True
+
+# Conviction gap: the winning side must out-score the other by at least this
+# many points to qualify. Softened from the first-cut 0.8 so it trims genuine
+# chop without choking trade flow. Only applied when selective entry is ON.
+TUNED_CONVICTION_GAP = 0.6
+
+# ── Exit geometry (the real fix for "rarely hits TP, mostly SL") ──────────────
+# Closer TP: pin TP to a reachable multiple of net risk instead of the old wide
+# ~2.6-3x table. ~1.6:1 net R/R is far more likely to actually be reached by a
+# scalper while still clearing fees with margin to spare.
+TUNED_RR_TARGET = 1.6
+
+# Wider SL: require SL to sit at least this many ATRs from entry so normal wick
+# noise can't stop you out prematurely (was 1.5x).
+TUNED_ATR_SL_MULT = 2.0
+
+# Partial take-profit + breakeven: bank a chunk of the position partway to TP
+# and move the stop to breakeven, so a trade that moves your way locks in real
+# profit instead of round-tripping back to the stop.
+TUNED_PARTIAL_TP_ENABLE   = True
+TUNED_PARTIAL_TP_PROGRESS = 0.50   # fire at 50% of the way to TP
+TUNED_PARTIAL_TP_FRACTION = 0.50   # close 50% of the position
+
 FM  = ("Consolas", 10)
 FMS = ("Consolas", 9)
 FMB = ("Consolas", 10, "bold")
@@ -3113,7 +3173,13 @@ def obv(closes, volumes):
     obv_slope = result[-1] - result[-5]
     return result[-1], obv_slope
 
-def compute_signals(candles, ticker, thresh, atr_min=0.06, rsi_bias=0):
+def compute_signals(candles, ticker, thresh, atr_min=0.06, rsi_bias=0,
+                    selective_entry=True):
+    # selective_entry: when True (default), the v2.8 entry-quality changes
+    # (confluence bonus, trigger gate, conviction gap) are applied. When False,
+    # scoring/direction selection behaves like the original v2.7.5 logic, which
+    # takes more (but lower-quality) trades. Wired to the "Selective entry" UI
+    # toggle so it can be A/B tested live.
     if len(candles) < 26:
         return None   # not enough candles for indicators
     cl = [c["close"]  for c in candles]
@@ -3217,7 +3283,7 @@ def compute_signals(candles, ticker, thresh, atr_min=0.06, rsi_bias=0):
     ls += 1.0 if obv_slope > 0 else 0                           # OBV rising
     ls += 0.5 if higher_lows else 0                             # Price action: higher lows
 
-    # ── TUNED: confluence stacking bonus ─────────────────────────────────────
+    # ── TUNED: confluence stacking bonus (only when selective_entry is ON) ───
     # The bot was missing genuinely strong setups because their points were
     # spread thin across many indicators and rarely cleared the threshold.
     # When the *strongest* trigger families agree (a real cross/momentum signal
@@ -3225,22 +3291,23 @@ def compute_signals(candles, ticker, thresh, atr_min=0.06, rsi_bias=0):
     # higher-conviction setup than the same point total reached by stacking
     # several weak/neutral readings — reward it explicitly so good setups stand
     # out and clear the bar instead of hovering just under it.
-    ls_trigger   = ema_cross_up or macd_cross_up or rv < (30 + rsi_bias)
-    ls_extreme   = srsi < 20 or pct_b < 0.2
-    ls_confluence = 1.0 if (ls_trigger and ls_extreme and vr > 1.2) else 0.0
-    ls += ls_confluence
+    if selective_entry:
+        ls_trigger   = ema_cross_up or macd_cross_up or rv < (30 + rsi_bias)
+        ls_extreme   = srsi < 20 or pct_b < 0.2
+        ls_confluence = 1.0 if (ls_trigger and ls_extreme and vr > 1.2) else 0.0
+        ls += ls_confluence
 
-    # ── TUNED: trigger-quality gate ───────────────────────────────────────────
-    # A score built entirely from soft/neutral contributions (trend bias,
-    # mid-range RSI, small volume bumps, price-action notes) can limp across
-    # the threshold without any real catalyst — these are exactly the "bad"
-    # entries that get faded immediately. Require at least one bona-fide
-    # trigger (a fresh cross, building/crossed MACD momentum, or a genuine
-    # oversold extreme) before the LONG side is allowed to qualify at all.
-    ls_has_trigger = (ema_cross_up or macd_cross_up or macd_building_long
-                      or rv < (35 + rsi_bias) or srsi < 25 or pct_b < 0.25)
-    if not ls_has_trigger:
-        ls = min(ls, thresh - 0.5)   # cap below threshold — no catalyst, no entry
+        # ── TUNED: trigger-quality gate ──────────────────────────────────────
+        # A score built entirely from soft/neutral contributions (trend bias,
+        # mid-range RSI, small volume bumps, price-action notes) can limp across
+        # the threshold without any real catalyst — these are exactly the "bad"
+        # entries that get faded immediately. Require at least one bona-fide
+        # trigger (a fresh cross, building/crossed MACD momentum, or a genuine
+        # oversold extreme) before the LONG side is allowed to qualify at all.
+        ls_has_trigger = (ema_cross_up or macd_cross_up or macd_building_long
+                          or rv < (35 + rsi_bias) or srsi < 25 or pct_b < 0.25)
+        if not ls_has_trigger:
+            ls = min(ls, thresh - 0.5)   # cap below threshold — no catalyst, no entry
 
     # ── Score SHORT (max 9 points) ────────────────────────────────────────────
     ss = 0.0
@@ -3256,31 +3323,31 @@ def compute_signals(candles, ticker, thresh, atr_min=0.06, rsi_bias=0):
     ss += 1.0 if obv_slope < 0 else 0                           # OBV falling
     ss += 0.5 if lower_highs else 0                             # Price action: lower highs
 
-    # ── TUNED: confluence stacking bonus (mirror of the LONG side above) ─────
-    ss_trigger   = ema_cross_down or macd_cross_down or rv > (70 - rsi_bias)
-    ss_extreme   = srsi > 80 or pct_b > 0.8
-    ss_confluence = 1.0 if (ss_trigger and ss_extreme and vr > 1.2) else 0.0
-    ss += ss_confluence
+    # ── TUNED: confluence + trigger gate (mirror of LONG; selective_entry only)
+    if selective_entry:
+        ss_trigger   = ema_cross_down or macd_cross_down or rv > (70 - rsi_bias)
+        ss_extreme   = srsi > 80 or pct_b > 0.8
+        ss_confluence = 1.0 if (ss_trigger and ss_extreme and vr > 1.2) else 0.0
+        ss += ss_confluence
 
-    # ── TUNED: trigger-quality gate (mirror of the LONG side above) ──────────
-    ss_has_trigger = (ema_cross_down or macd_cross_down or macd_building_short
-                      or rv > (65 - rsi_bias) or srsi > 75 or pct_b > 0.75)
-    if not ss_has_trigger:
-        ss = min(ss, thresh - 0.5)
+        ss_has_trigger = (ema_cross_down or macd_cross_down or macd_building_short
+                          or rv > (65 - rsi_bias) or srsi > 75 or pct_b > 0.75)
+        if not ss_has_trigger:
+            ss = min(ss, thresh - 0.5)
 
     ls, ss = round(ls, 1), round(ss, 1)
 
-    # ── TUNED: minimum-conviction gap ─────────────────────────────────────────
+    # ── TUNED: minimum-conviction gap (selective_entry only) ──────────────────
     # Previously any ls > ss (even by 0.1) qualified as LONG, so choppy/contested
     # markets where both directions score near-equally near the threshold (the
     # classic "fires, then immediately reverses" bad trade) slipped through.
     # Require the winning side to clearly out-score the other before committing.
-    MIN_CONVICTION_GAP = 0.8
     gap = abs(ls - ss)
+    _conv_gap = TUNED_CONVICTION_GAP if selective_entry else 0.0
 
-    if ls >= thresh and ls > ss and gap >= MIN_CONVICTION_GAP:   dr, sc = "LONG",  ls
-    elif ss >= thresh and ss > ls and gap >= MIN_CONVICTION_GAP: dr, sc = "SHORT", ss
-    else:                                                         dr, sc = "HOLD",  max(ls, ss)
+    if ls >= thresh and ls > ss and gap >= _conv_gap:   dr, sc = "LONG",  ls
+    elif ss >= thresh and ss > ls and gap >= _conv_gap: dr, sc = "SHORT", ss
+    else:                                               dr, sc = "HOLD",  max(ls, ss)
 
     # ── RSI divergence detection ─────────────────────────────────────────────
     # Bearish: price higher high but RSI lower high → fade LONG signal
@@ -5166,6 +5233,18 @@ class HermesBotApp:
         self._dtf_lbl.pack(side="left", padx=(6,0))
         # Initialize dual TF UI state
         self.root.after(100, self._on_dual_tf)
+
+        # ── v2.8-TUNED: Selective entry toggle ───────────────────────────────
+        # ON  = apply the v2.8 entry-quality filters (confluence bonus, trigger
+        #       gate, conviction gap) → fewer, higher-conviction trades.
+        # OFF = original v2.7.5 entry behaviour → more (lower-quality) trades.
+        sel_row = tk.Frame(s3, bg=BG2); sel_row.pack(fill="x", pady=(2,4))
+        self._tuned_entry_var = tk.BooleanVar(value=TUNED_SELECTIVE_ENTRY_DEFAULT)
+        tk.Checkbutton(sel_row, text="Selective entry  (v2.8 quality filters)",
+                       variable=self._tuned_entry_var,
+                       bg=BG2, fg=AMBER, selectcolor=BG3,
+                       activebackground=BG2, font=("Consolas",8,"bold")
+                       ).pack(side="left")
         self.int_cb  = self._combo(self._lrow(s3, "Scan interval"),
             ["1s","2s","3s","4s","5s","6s","7s","8s","9s",
              "10s","15s","20s","25s","30s","35s","40s","45s",
@@ -8192,7 +8271,7 @@ class HermesBotApp:
 
             # Clean up position-scoped attributes
             for attr in [f"near_tp_{pid}", f"stale_{pid}", f"_partial_tp_{pid}",
-                         f"_trail_{pid}", f"_trail_ms_{pid}"]:
+                         f"_be_lock_{pid}", f"_trail_{pid}", f"_trail_ms_{pid}"]:
                 try: delattr(self, attr)
                 except AttributeError: pass
             self._stale_checked.discard(pid)
@@ -8411,6 +8490,10 @@ class HermesBotApp:
                 stack_thr  = self._stack_thresh()
                 stack_max  = self._stack_max()
                 overnight  = self.overnight_var.get() if hasattr(self, "overnight_var") else False
+                # v2.8-TUNED: read the Selective-entry toggle once per cycle
+                _selective = (self._tuned_entry_var.get()
+                              if hasattr(self, "_tuned_entry_var")
+                              else TUNED_SELECTIVE_ENTRY_DEFAULT)
 
                 # ── Periodic position sync (every 2 cycles in live mode) ─────
                 # Pass sl=None, tp=None so _sync_positions always computes
@@ -8469,7 +8552,8 @@ class HermesBotApp:
                             # ── Sequential dual TF (only when Dual TF enabled) ──────
                             # Step 1: Min5 trend confirmation
                             sig5_ = compute_signals(can_, tkr_, _thr_eff,
-                                                    atr_min=_atr_min, rsi_bias=_rsi_bias)
+                                                    atr_min=_atr_min, rsi_bias=_rsi_bias,
+                                                    selective_entry=_selective)
                             if sig5_ is None:
                                 scan_errors.append((f"{pair_label(p)}: not enough candles (Min5)", MUTED))
                                 return
@@ -8481,7 +8565,8 @@ class HermesBotApp:
                                 try:
                                     can1_ = get_klines(p, "Min1", 30)
                                     sig1_ = compute_signals(can1_, tkr_, _thr_eff,
-                                                            atr_min=_atr_min, rsi_bias=_rsi_bias)
+                                                            atr_min=_atr_min, rsi_bias=_rsi_bias,
+                                                            selective_entry=_selective)
                                     if sig1_ is None: sig1_ = sig5_
 
                                     # Entry confirmed only if Min1 agrees with Min5 direction
@@ -8523,7 +8608,8 @@ class HermesBotApp:
                         else:
                             # Single TF mode — compute normally
                             sig_ = compute_signals(can_, tkr_, _thr_eff,
-                                                   atr_min=_atr_min, rsi_bias=_rsi_bias)
+                                                   atr_min=_atr_min, rsi_bias=_rsi_bias,
+                                                   selective_entry=_selective)
                             if sig_ is None:
                                 scan_errors.append((f"{pair_label(p)}: not enough candles", MUTED))
                                 return
@@ -8734,6 +8820,7 @@ class HermesBotApp:
                         self._price_peak.pop(pid, None)
                         self._stale_checked.discard(pid)
                         for attr in [f"near_tp_{pid}", f"stale_{pid}",
+                                     f"_partial_tp_{pid}", f"_be_lock_{pid}",
                                      f"_trail_{pid}", f"_trail_ms_{pid}"]:
                             try: delattr(self, attr)
                             except AttributeError: pass
@@ -9506,7 +9593,9 @@ class HermesBotApp:
             if candles_for_atr:
                 atr_raw = atr(candles_for_atr, 14)
                 atr_as_pct = atr_raw / px if px > 0 else 0
-                atr_min_sl = atr_as_pct * 1.5   # SL must be at least 1.5x ATR from entry
+                # v2.8-TUNED: wider ATR-based SL floor (was 1.5x) so normal wick
+                # noise can't stop the trade out before it has room to work.
+                atr_min_sl = atr_as_pct * TUNED_ATR_SL_MULT
                 if sl_pct < atr_min_sl:
                     self._log(
                         f"SL widened {sl_pct*100:.3f}% → {atr_min_sl*100:.3f}% "
@@ -9565,17 +9654,21 @@ class HermesBotApp:
         # Net R/R: open cost (maker+slip) on entry, close cost (taker) on exit
         open_cost    = self._fee_maker + SLIP_PCT   # paid when entering
         close_cost   = self._fee_taker              # paid when exiting
-        net_reward   = tp_pct - open_cost - close_cost
         net_risk     = sl_pct + open_cost + close_cost
-        MIN_NET_RR   = 1.5
-        if net_risk > 0 and (net_reward / net_risk) < MIN_NET_RR:
-            # TP is too close relative to SL — widen TP to restore minimum R/R
-            old_tp = tp_pct
-            tp_pct = net_risk * MIN_NET_RR + open_cost + close_cost
+        # v2.8-TUNED: pin TP to a *reachable* multiple of net risk instead of the
+        # old wide ~2.6-3x table that price rarely reached. This both widens TP
+        # when it was too tight (fees) AND tightens it when it was too far —
+        # directly fixing the "rarely hits TP" problem. Partial-TP (below) banks
+        # profit even earlier, so the final TP being closer is doubly safe.
+        target_tp = net_risk * TUNED_RR_TARGET + open_cost + close_cost
+        old_tp = tp_pct
+        tp_pct = max(MIN_TP, target_tp)
+        if abs(tp_pct - old_tp) > 1e-9:
+            _dir = "tightened" if tp_pct < old_tp else "widened"
             self._log_event(
-                f"TP widened {old_tp*100:.3f}% → {tp_pct*100:.3f}% "
-                f"to achieve net R/R ≥ {MIN_NET_RR} "
-                f"(net reward {net_reward*100:.3f}% / net risk {net_risk*100:.3f}%)",
+                f"TP {_dir} {old_tp*100:.3f}% → {tp_pct*100:.3f}% "
+                f"(v2.8 target net R/R {TUNED_RR_TARGET:.2f}, "
+                f"net risk {net_risk*100:.3f}%)",
                 AMBER)
         # Log the effective net R/R so it's always visible in the trade log
         eff_net_reward = tp_pct - open_cost - close_cost
@@ -10039,6 +10132,119 @@ class HermesBotApp:
         self._cancel_mexc_tpsl(pos, ak, asc)
         self._log_event(f"↕ MEXC SL synced → ${pos.stop_loss:,.4f}", CYAN)
 
+    def _partial_take_profit(self, pos, px, dry, ak, asc):
+        """v2.8-TUNED: close a fraction of `pos` at the current price to bank
+        profit partway to TP, then move the stop to breakeven. Fires once per
+        position (guarded by a per-pid flag). Safe in both paper and live mode.
+
+        State accounting mirrors a full close, scaled by the closed fraction:
+          • realise PnL on the closed fraction (net of round-trip fees)
+          • credit balance + record a 'PARTIAL TP' trade-history row
+          • shrink the live position (margin / size_usdt / exchange_hold_vol)
+            by the same fraction so the remaining position tracks correctly
+          • move SL to breakeven so the runner can't become a loss
+        """
+        pid = pos.id
+        guard = f"_partial_tp_{pid}"
+        if getattr(self, guard, False):
+            return
+        frac = TUNED_PARTIAL_TP_FRACTION
+        if frac <= 0 or frac >= 1:
+            return
+        d = pos.direction
+
+        # Only take partial profit when actually in profit at px
+        raw = ((px - pos.entry_price) / pos.entry_price if d == "LONG"
+               else (pos.entry_price - px) / pos.entry_price)
+        if raw <= 0:
+            return
+
+        setattr(self, guard, True)   # set before any I/O so it can't double-fire
+
+        close_size   = pos.size_usdt * frac
+        close_margin = pos.margin * frac
+        gross_pnl    = raw * pos.leverage * close_margin
+        open_fee_rate  = (self._fee_maker if getattr(pos, "open_fee_type", "taker") == "maker"
+                          else self._fee_taker)
+        close_fee_rate = self._fee_taker
+        fee = close_size * (open_fee_rate + close_fee_rate)
+        pnl = round(gross_pnl - fee, 4)
+
+        # ── Live: send a reduce-only market order for the closed fraction ──────
+        if not dry:
+            side = 4 if d == "LONG" else 2   # 4=close long, 2=close short
+            cs   = PAIR_CONTRACT_SIZE.get(pos.symbol, 1.0)
+            exch_vol = getattr(pos, "exchange_hold_vol", 0.0) or 0.0
+            if exch_vol > 0:
+                vol = int(round(exch_vol * frac))
+            elif cs > 0 and px > 0:
+                vol = max(1, int((pos.size_usdt * frac) / (px * cs)))
+            else:
+                vol = 0
+            if vol <= 0:
+                self._log_event(f"⚠ Partial TP skipped — vol=0 for {pos.symbol}", AMBER)
+                return
+            try:
+                resp = mexc_private("POST", "/api/v1/private/order/submit",
+                                    {"symbol": pos.symbol, "price": 0, "vol": vol,
+                                     "side": side, "type": 5, "openType": 1},
+                                    ak, asc, dry)
+                if not (resp and resp.get("success")):
+                    self._log_event(
+                        f"⚠ Partial TP order rejected ({pos.symbol}): "
+                        f"{resp.get('message', resp) if resp else 'no response'} "
+                        f"— leaving full position open", AMBER)
+                    return
+            except Exception as e:
+                self._log_event(f"⚠ Partial TP exception ({pos.symbol}): {e}", AMBER)
+                return
+            # Shrink tracked exchange contract count by the closed fraction
+            if exch_vol > 0:
+                pos.exchange_hold_vol = max(0.0, exch_vol - vol)
+
+        # ── Book the realised partial PnL (paper + live) ─────────────────────
+        self.state.total_pnl = round(self.state.total_pnl + pnl, 4)
+        if dry:
+            # Paper: return the freed margin + its share of PnL to balance
+            self.state.balance = round(self.state.balance + close_margin + pnl, 4)
+        else:
+            self.state.balance = round(self.state.balance + pnl, 4)
+
+        self.state.trades.append({
+            "symbol": pos.symbol, "direction": d,
+            "entry_price": pos.entry_price, "exit_price": px,
+            "margin": round(close_margin, 4), "leverage": pos.leverage,
+            "pnl_usdt": pnl, "status": "PARTIAL TP", "hedge": bool(pos.hedge_of),
+            "opened_at": pos.opened_at,
+            "closed_at": datetime.now(timezone.utc).isoformat(),
+        })
+
+        # ── Shrink the live position to the remaining fraction ───────────────
+        pos.margin    = round(pos.margin * (1 - frac), 6)
+        pos.size_usdt = round(pos.size_usdt * (1 - frac), 6)
+
+        # ── Move SL to breakeven so the runner can't turn into a loss ────────
+        fee_buffer = pos.entry_price * 0.0025
+        if d == "LONG":
+            be = pos.entry_price + fee_buffer
+            if be > pos.stop_loss:
+                pos.stop_loss = round_price(pos.symbol, be)
+        else:
+            be = pos.entry_price - fee_buffer
+            if be < pos.stop_loss:
+                pos.stop_loss = round_price(pos.symbol, be)
+        setattr(self, f"_be_lock_{pid}", True)   # don't let Tier-1 fire again
+
+        self._log_event(
+            f"💰 Partial TP {pair_label(pos.symbol)} {d}: closed {frac*100:.0f}% "
+            f"@ ${px:,.4f}  PnL ${pnl:+.2f}  → SL to breakeven ${pos.stop_loss:,.4f}",
+            GREEN)
+        self._refresh_metrics(); self._save()
+        self.root.after(0, self._refresh_trades_tab)
+        if not dry:
+            threading.Thread(target=self._update_sl_on_mexc,
+                             args=(pos, ak, asc), daemon=True).start()
+
     def _market_close_position(self, pos, ak, asc, px=None, force_close=False):
         if px is None:
             px = self.current_prices.get(pos.symbol, pos.entry_price)
@@ -10155,6 +10361,15 @@ class HermesBotApp:
                        PAIR_ATR_MIN.get(pos.symbol, 0.06))
         _atr_price   = pos.entry_price * (_sym_atr_pct / 100.0)
         ATR_TRAIL_MULT = 1.5   # trail gap = 1.5 × ATR — wide enough to breathe, tight enough to protect
+
+        # ── v2.8-TUNED Tier 0 — Partial take-profit + breakeven ───────────────
+        # Bank part of the position partway to TP and move the stop to breakeven,
+        # so a trade that moves your way locks in real profit instead of round-
+        # tripping back to the stop. Fires once per position, only for primary
+        # (non-hedge) positions, and never in the force_close path.
+        if (TUNED_PARTIAL_TP_ENABLE and not force_close and not pos.hedge_of
+                and tp_progress >= TUNED_PARTIAL_TP_PROGRESS):
+            self._partial_take_profit(pos, px, dry, ak, asc)
 
         # Tier 1 — Breakeven lock (fires once at 30% TP progress)
         _be_key = f"_be_lock_{pos.id}"
