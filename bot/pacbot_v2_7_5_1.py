@@ -8572,7 +8572,8 @@ class HermesBotApp:
 
                     # Per-indicator breakdown — only log pairs scoring >= 4.0 to reduce UI noise
                     # SCALE v2.4: raised from 3.5 → 4.0 to halve log callbacks at 30 pairs
-                    for p, s in sorted(all_sigs.items(), key=lambda x: x[1]['score'], reverse=True):
+                    # Reuse sorted_sigs (same data, same key/order) instead of re-sorting
+                    for p, s in sorted_sigs:
                         if s.get("score", 0) < 4.0:
                             continue
                         bull = s.get("trend") == "BULL"
@@ -8742,7 +8743,8 @@ class HermesBotApp:
                 def _passes_filters(pair, sig):
                     d = sig["direction"]
                     reasons = []
-                    overnight = hasattr(self, "overnight_var") and self.overnight_var.get()
+                    # Reuse `overnight` computed once at the top of _loop() — was
+                    # re-querying the Tk overnight_var for every scanned candidate.
 
                     # ── Hard RSI gates — never enter into extreme exhaustion ──
                     rv_  = sig.get("rsi", 50)
@@ -9108,8 +9110,9 @@ class HermesBotApp:
                 if candidates:
                     top_pair, top_sig = candidates[0]
                 elif all_sigs:
-                    top_pair, top_sig = sorted(all_sigs.items(),
-                        key=lambda x: x[1]["score"], reverse=True)[0]
+                    # Only the single highest-scoring pair is needed here — max() is
+                    # O(n) vs. sorting the whole dict just to take element [0].
+                    top_pair, top_sig = max(all_sigs.items(), key=lambda x: x[1]["score"])
                 else:
                     top_pair, top_sig = None, {}
 
