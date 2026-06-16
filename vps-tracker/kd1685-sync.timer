@@ -1,0 +1,12 @@
+[Unit]
+Description=Run KD1685 sync every 30 minutes
+
+[Timer]
+OnBootSec=2min
+OnUnitActiveSec=30min
+# Run on the clock even if the VPS was asleep at the scheduled time
+Persistent=true
+Unit=kd1685-sync.service
+
+[Install]
+WantedBy=timers.target

@@ -1,0 +1,14 @@
+[Unit]
+Description=KD1685 Statsmaster -> Supabase sync (one-shot)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+# Adjust User and WorkingDirectory to where you deploy
+User=kd1685
+WorkingDirectory=/opt/kd1685-tracker
+EnvironmentFile=/opt/kd1685-tracker/.env
+ExecStart=/usr/bin/node sync.js
+# Give Playwright/Chromium time on slow dashboards
+TimeoutStartSec=300
