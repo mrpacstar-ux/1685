@@ -111,6 +111,12 @@ auto-publish at the slot time, cancellable before it goes live). Run it on the
 included GitHub Action (`.github/workflows/palebluemind.yml`) for a channel that
 operates itself. Full guide + the honest limitations: **[`channel/AUTOPILOT.md`](./channel/AUTOPILOT.md)**.
 
+Check what's been produced (and per-pillar stats) any time:
+
+```bash
+npm run history            # totals, breakdown by pillar, most-recent uploads
+```
+
 A produced package (`out/<slug>/`) contains:
 
 ```

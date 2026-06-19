@@ -4,6 +4,7 @@ import { generateAndStoreIdeas } from "./ideas.js";
 import { generateCalendar, nextUnproducedSlot, slotToIdea } from "./calendar.js";
 import { produceFromTopic, produceFromIdea } from "./pipeline.js";
 import { runAutopilot } from "./autopilot.js";
+import { historyStats } from "./history.js";
 import { makeBrandAssets } from "./branding.js";
 import { uploadPackage } from "./youtube.js";
 import type { Idea } from "./schemas.js";
@@ -46,6 +47,7 @@ Usage:
   npm run run      -- "<topic>" [--short]            (produce + upload)
   npm run autopilot -- [--count N] [--theme "..."] [--short]
                                                      (hands-off: produce + publish)
+  npm run history  -- [--recent N]                   (what's been produced + stats)
 `;
 
 async function main(): Promise<void> {
@@ -74,6 +76,25 @@ async function main(): Promise<void> {
     case "branding": {
       // No API key needed — assets are rendered locally from SVG.
       await makeBrandAssets(path.join(OUT_DIR, "brand"));
+      break;
+    }
+
+    case "history": {
+      const stats = historyStats(Number(flags.recent ?? 10));
+      if (stats.total === 0) {
+        log("info", "No videos produced yet. Run `produce` or `autopilot`.");
+        break;
+      }
+      console.log(`\nProduced videos: ${stats.total}\n`);
+      console.log("By pillar:");
+      for (const [pillar, n] of Object.entries(stats.byPillar).sort((a, b) => b[1] - a[1])) {
+        console.log(`  ${String(n).padStart(3)}  ${pillar}`);
+      }
+      console.log("\nMost recent:");
+      for (const e of stats.recent) {
+        console.log(`  ${e.producedAt.slice(0, 10)}  [${e.pillar}]  ${e.title}`);
+      }
+      console.log("");
       break;
     }
 

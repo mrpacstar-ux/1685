@@ -12,6 +12,7 @@
     "upload": "tsx src/cli.ts upload",
     "run": "tsx src/cli.ts run",
     "autopilot": "tsx src/cli.ts autopilot",
+    "history": "tsx src/cli.ts history",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {

@@ -45,3 +45,23 @@ export function recentTitles(limit = 200): string[] {
     .slice(-limit)
     .map((e) => e.title);
 }
+
+export interface HistoryStats {
+  total: number;
+  byPillar: Record<string, number>;
+  recent: HistoryEntry[];
+}
+
+/** Aggregate stats over the produced-topic log. */
+export function historyStats(recentLimit = 10): HistoryStats {
+  const entries = loadHistory();
+  const byPillar: Record<string, number> = {};
+  for (const e of entries) {
+    byPillar[e.pillar] = (byPillar[e.pillar] ?? 0) + 1;
+  }
+  return {
+    total: entries.length,
+    byPillar,
+    recent: entries.slice(-recentLimit).reverse(),
+  };
+}
