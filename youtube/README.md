@@ -175,8 +175,11 @@ youtube/
 │  ├─ assemble.ts    ffmpeg video assembly
 │  ├─ youtube.ts     YouTube Data API upload
 │  ├─ calendar.ts    content calendar generator
+│  ├─ history.ts     durable produced-topic log (cross-run de-dup)
+│  ├─ autopilot.ts   hands-off produce + publish
 │  ├─ pipeline.ts    orchestrator
 │  └─ cli.ts         command-line entry
+├─ state/            tracked: history.json (never-repeat-a-topic log)
 └─ out/              generated packages + brand assets (git-ignored)
 ```
 

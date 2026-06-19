@@ -69,14 +69,25 @@ tokens automatically (`googleapis` handles this).
 
 ---
 
-## Honest limitations of "fully automated"
+## Never repeating a topic (cross-run de-dup)
 
-- **State doesn't persist on a fresh CI runner.** `out/` is wiped each run, so
-  autopilot generates fresh ideas rather than walking a saved calendar, and the
-  cross-run idea-dedup log resets. Topic variety from the model is high, but for
-  strict de-duplication at scale, persist `out/ideas.json` (commit it back,
-  cache it, or use a small datastore). Locally, where `out/` persists, autopilot
-  follows the calendar and de-dups normally.
+Every production appends to `state/history.json` (slug, title, pillar, date).
+That file is **tracked in git**, not under the ephemeral `out/`, so:
+
+- **Locally**, it persists naturally between runs.
+- **In CI**, the workflow commits it back after each run (`permissions:
+  contents: write`), so the next scheduled run starts from the full history.
+
+Idea generation (autopilot, `ideas`, and `calendar`) reads recent titles from
+this log and instructs the model to avoid duplicating or closely overlapping
+them, and autopilot additionally skips any slug already in the history. The
+result: a daily cron won't repeat — or near-repeat — a topic it's already
+covered.
+
+> Want it leaner? Swap the commit-back step for `actions/cache` keyed on
+> `state/history.json`, or point `STATE_DIR` at a mounted volume / datastore.
+
+## Honest limitations of "fully automated"
 - **Quality still benefits from a human.** Scheduled mode exists precisely so a
   person *can* glance before publish. Truly unattended `public` mode trades that
   safety for convenience — use it knowingly.

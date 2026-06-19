@@ -26,7 +26,7 @@ on:
         default: ""
 
 permissions:
-  contents: read
+  contents: write # to commit the produced-topic history back
 
 concurrency:
   group: palebluemind-autopilot
@@ -67,6 +67,20 @@ jobs:
           YOUTUBE_PUBLISH_TZ_OFFSET: ${{ secrets.YOUTUBE_PUBLISH_TZ_OFFSET }}
           PBM_PUBLISH_MODE: scheduled
         run: npm run autopilot -- --count "${{ github.event.inputs.count || '1' }}" ${{ github.event.inputs.theme && format('--theme "{0}"', github.event.inputs.theme) || '' }}
+
+      - name: Persist produced-topic history
+        if: always()
+        working-directory: .
+        run: |
+          if ! git diff --quiet -- youtube/state/history.json; then
+            git config user.name "pale-blue-mind-bot"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git add youtube/state/history.json
+            git commit -m "autopilot: update produced-topic history"
+            git push
+          else
+            echo "No history change."
+          fi
 
       - name: Upload produced packages (artifact)
         if: always()

@@ -7,8 +7,9 @@ import {
 } from "./calendar.js";
 import { produceFromIdea } from "./pipeline.js";
 import { uploadPackage } from "./youtube.js";
+import { isProduced, recentTitles } from "./history.js";
 import type { Idea } from "./schemas.js";
-import { log } from "./utils.js";
+import { slugify, log } from "./utils.js";
 
 export interface AutopilotOptions {
   count?: number;
@@ -32,17 +33,17 @@ export async function runAutopilot(opts: AutopilotOptions = {}): Promise<void> {
   for (let i = 0; i < count; i++) {
     const slot = nextUnproducedSlot();
     let idea: Idea;
-    if (slot) {
+    if (slot && !isProduced(slot.slug)) {
       log("info", `[${i + 1}/${count}] from calendar: "${slot.title}"`);
       idea = slotToIdea(slot);
     } else {
       log("info", `[${i + 1}/${count}] generating a fresh idea…`);
-      const ideas = await generateIdeas({ count: 1, theme: opts.theme, format });
-      if (!ideas.length) {
-        log("warn", "No idea generated; stopping.");
+      const picked = await pickFreshIdea(opts.theme, format);
+      if (!picked) {
+        log("warn", "Could not generate a non-duplicate idea; stopping.");
         break;
       }
-      idea = ideas[0];
+      idea = picked;
     }
 
     const result = await produceFromIdea(idea);
@@ -50,6 +51,24 @@ export async function runAutopilot(opts: AutopilotOptions = {}): Promise<void> {
   }
 
   log("ok", "Autopilot run complete.");
+}
+
+/**
+ * Generate a small batch (excluding already-covered topics) and return the
+ * first candidate whose slug hasn't been produced — belt-and-suspenders on top
+ * of the model-level exclusion.
+ */
+async function pickFreshIdea(
+  theme: string | undefined,
+  format: "short" | "long",
+): Promise<Idea | null> {
+  const ideas = await generateIdeas({
+    count: 3,
+    theme,
+    format,
+    avoid: recentTitles(),
+  });
+  return ideas.find((idea) => !isProduced(slugify(idea.title))) ?? ideas[0] ?? null;
 }
 
 async function publishForMode(dir: string, slot?: CalendarSlot): Promise<void> {

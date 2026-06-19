@@ -1,6 +1,7 @@
 import path from "node:path";
 import fs from "node:fs";
 import { generateIdeas } from "./ideas.js";
+import { recentTitles } from "./history.js";
 import type { Idea } from "./schemas.js";
 import { OUT_DIR } from "./config.js";
 import { writeJson, writeText, readJson, slugify, log } from "./utils.js";
@@ -45,9 +46,10 @@ export async function generateCalendar(weeks: number): Promise<CalendarSlot[]> {
   }
 
   log("run", `Generating ${shortsNeeded} short + ${longsNeeded} long ideas…`);
+  const avoid = recentTitles();
   const [shorts, longs] = await Promise.all([
-    generateIdeas({ count: shortsNeeded, format: "short" }),
-    generateIdeas({ count: longsNeeded, format: "long" }),
+    generateIdeas({ count: shortsNeeded, format: "short", avoid }),
+    generateIdeas({ count: longsNeeded, format: "long", avoid }),
   ]);
 
   const shortQ = [...shorts];

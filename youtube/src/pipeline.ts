@@ -14,6 +14,7 @@ import { synthesizeVoiceover } from "./voiceover.js";
 import { gatherVisuals } from "./visuals.js";
 import { makeThumbnails } from "./thumbnail.js";
 import { assembleVideo } from "./assemble.js";
+import { recordProduced } from "./history.js";
 import { packageDir, writeJson, writeText, slugify, log } from "./utils.js";
 
 export interface ProduceResult {
@@ -88,6 +89,9 @@ export async function produceFromIdea(idea: Idea): Promise<ProduceResult> {
     reviewBeforePublish: true,
   };
   writeJson(path.join(dir, "manifest.json"), manifest);
+
+  // Durable record so this topic is never produced again.
+  recordProduced({ slug, title: metadata.chosen_title, pillar: idea.pillar });
 
   log("ok", `Package complete: out/${slug}/`);
   return {

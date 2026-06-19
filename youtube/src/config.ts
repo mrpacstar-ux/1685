@@ -31,6 +31,9 @@ loadDotEnv();
 
 const ROOT = path.dirname(fileURLToPath(import.meta.url));
 export const OUT_DIR = path.join(ROOT, "..", "out");
+// Tracked (not git-ignored) so the produced-topic history survives across
+// runs — including fresh CI runners that wipe out/ each time.
+export const STATE_DIR = path.join(ROOT, "..", "state");
 
 /** Brand constants — the single source of truth for identity in code. */
 export const BRAND = {
