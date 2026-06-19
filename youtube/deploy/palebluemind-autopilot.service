@@ -1,0 +1,16 @@
+[Unit]
+Description=Pale Blue Mind autopilot — produce + publish one video
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=palebluemind
+WorkingDirectory=/opt/palebluemind
+# config.ts loads /opt/palebluemind/.env itself, so no EnvironmentFile needed.
+Environment=HOME=/opt/palebluemind
+Environment=PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+ExecStart=/usr/bin/npm run autopilot -- --count 1
+# Rendering + upload can take a while on a small VPS.
+TimeoutStartSec=3600
+Nice=10

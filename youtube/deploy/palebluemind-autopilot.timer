@@ -1,0 +1,13 @@
+[Unit]
+Description=Run Pale Blue Mind autopilot daily
+
+[Timer]
+# Daily at 14:00 server time. Edit to taste, then: sudo systemctl daemon-reload
+OnCalendar=*-*-* 14:00:00
+# Spread load and run if the box was asleep at the scheduled time.
+RandomizedDelaySec=600
+Persistent=true
+Unit=palebluemind-autopilot.service
+
+[Install]
+WantedBy=timers.target
