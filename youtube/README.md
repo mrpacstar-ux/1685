@@ -117,6 +117,10 @@ Check what's been produced (and per-pillar stats) any time:
 npm run history            # totals, breakdown by pillar, most-recent uploads
 ```
 
+**Run it on a VPS** (best home for unattended operation — state persists on
+disk): one install script + a systemd timer. See
+[`deploy/DEPLOY.md`](./deploy/DEPLOY.md).
+
 A produced package (`out/<slug>/`) contains:
 
 ```
