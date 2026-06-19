@@ -112,6 +112,10 @@ Fill in `.env`:
 
 ## 6. 🤖 First video (~5 min hands-on)
 
+Don't start from a blank prompt — `channel/LAUNCH-SLATE.md` has 12 ready
+first-video topics across the five pillars, with a 2-week launch sequence and
+copy-paste commands. Produce one:
+
 ```bash
 npm run produce -- "What would you see falling into a black hole?"
 ```
