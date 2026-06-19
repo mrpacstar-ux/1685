@@ -8,9 +8,11 @@ import {
 } from "./schemas.js";
 import { writeScript, scriptToMarkdown } from "./script.js";
 import { makeMetadata } from "./metadata.js";
+import { writeCaptions } from "./captions.js";
+import { writePublishSheet } from "./publish.js";
 import { synthesizeVoiceover } from "./voiceover.js";
 import { gatherVisuals } from "./visuals.js";
-import { makeThumbnail } from "./thumbnail.js";
+import { makeThumbnails } from "./thumbnail.js";
 import { assembleVideo } from "./assemble.js";
 import { packageDir, writeJson, writeText, slugify, log } from "./utils.js";
 
@@ -50,21 +52,23 @@ export async function produceFromIdea(idea: Idea): Promise<ProduceResult> {
   const dir = packageDir(slug);
   log("run", `Producing "${idea.title}" (${idea.format}) → out/${slug}/`);
 
-  // 1. Script
+  // 1. Script (+ captions track)
   const script = await writeScript(idea);
   writeJson(path.join(dir, "script.json"), script);
   writeText(path.join(dir, "script.md"), scriptToMarkdown(script));
+  writeCaptions(script, dir);
   log("ok", `Script written (${script.segments.length} segments).`);
 
-  // 2. Metadata / SEO
+  // 2. Metadata / SEO (+ copy-paste publish sheet)
   const metadata = await makeMetadata(script);
   writeJson(path.join(dir, "metadata.json"), metadata);
+  writePublishSheet(metadata, dir);
   log("ok", `Metadata written ("${metadata.chosen_title}").`);
 
   // 3-5. Assets (each degrades gracefully if a key is missing)
   const voice = await synthesizeVoiceover(script, dir);
   const visuals = await gatherVisuals(script, dir);
-  await makeThumbnail(metadata.thumbnail_text, dir);
+  await makeThumbnails(metadata.thumbnail_text, dir);
 
   // 6. Assemble
   const video = assembleVideo(visuals.clips, voice.file, dir);

@@ -1,7 +1,9 @@
-import { requireAnthropicKey } from "./config.js";
+import { requireAnthropicKey, OUT_DIR } from "./config.js";
+import path from "node:path";
 import { generateAndStoreIdeas } from "./ideas.js";
 import { generateCalendar, nextUnproducedSlot } from "./calendar.js";
 import { produceFromTopic, produceFromIdea } from "./pipeline.js";
+import { makeBrandAssets } from "./branding.js";
 import { uploadPackage } from "./youtube.js";
 import type { Idea } from "./schemas.js";
 import { log } from "./utils.js";
@@ -37,6 +39,7 @@ const USAGE = `Pale Blue Mind — channel automation
 Usage:
   npm run ideas    -- [--count N] [--theme "..."] [--format short|long|mixed]
   npm run calendar -- [--weeks N]
+  npm run branding                                   (render avatar + banner)
   npm run produce  -- "<topic>"  | --from-calendar  [--short]
   npm run upload   -- out/<slug>
   npm run run      -- "<topic>" [--short]            (produce + upload)
@@ -62,6 +65,12 @@ async function main(): Promise<void> {
     case "calendar": {
       requireAnthropicKey();
       await generateCalendar(Number(flags.weeks ?? 4));
+      break;
+    }
+
+    case "branding": {
+      // No API key needed — assets are rendered locally from SVG.
+      await makeBrandAssets(path.join(OUT_DIR, "brand"));
       break;
     }
 

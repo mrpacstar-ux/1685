@@ -7,6 +7,7 @@
   "scripts": {
     "ideas": "tsx src/cli.ts ideas",
     "calendar": "tsx src/cli.ts calendar",
+    "branding": "tsx src/cli.ts branding",
     "produce": "tsx src/cli.ts produce",
     "upload": "tsx src/cli.ts upload",
     "run": "tsx src/cli.ts run",

@@ -78,6 +78,9 @@ cd youtube
 npm install
 cp .env.example .env        # add at least ANTHROPIC_API_KEY
 
+# 0. Render the channel brand assets (avatar + banner). No API key needed.
+npm run branding            # → out/brand/avatar.png + out/brand/banner.png
+
 # 1. Brainstorm a batch of ideas (writes ideas to out/ideas.json)
 npm run ideas -- --count 15
 
@@ -101,11 +104,15 @@ A produced package (`out/<slug>/`) contains:
 ```
 script.md          full narration script with shot directions
 script.json        structured script (segments, b-roll queries, on-screen text)
+captions.srt       SubRip captions (timings estimated from the narration)
 metadata.json      title, description, tags, thumbnail text, pinned comment
+publish.txt        copy-paste publishing sheet + pre-publish checklist
 storyboard.md      human-readable shot list (always written)
+thumbnail.png      1280×720 thumbnail — variant A
+thumbnail-b.png    1280×720 thumbnail — variant B (for A/B "Test & Compare")
+manifest.json      package summary + per-step status
 voiceover.mp3      narration audio            (if a TTS key is set)
 assets/            downloaded B-roll clips    (if PEXELS_API_KEY is set)
-thumbnail.png      1280×720 thumbnail
 video.mp4          final render               (if ffmpeg + assets present)
 ```
 
@@ -136,23 +143,33 @@ Claude is always accessed through the official `@anthropic-ai/sdk`.
 youtube/
 ├─ CONCEPT.md        brand bible — niche, voice, formats, monetization
 ├─ GROWTH.md         growth playbook — algorithm strategy, cadence, KPIs
+├─ channel/
+│  ├─ SETUP.md       launch runbook — account setup → operating rhythm
+│  ├─ about.md       paste-ready About copy + discovery keywords
+│  └─ playlists.md   pillar playlist structure + series ideas
 ├─ src/
-│  ├─ config.ts      env + brand constants
+│  ├─ config.ts      env + brand constants (BRAND = single source of truth)
 │  ├─ anthropic.ts   Claude client (text + structured JSON helpers)
 │  ├─ schemas.ts     zod + JSON schemas for structured generation
 │  ├─ ideas.ts       topic / idea generation
 │  ├─ script.ts      script writing (hook → segments → CTA)
+│  ├─ captions.ts    .srt caption generation from the script
 │  ├─ metadata.ts    titles, descriptions, tags, thumbnail copy
+│  ├─ publish.ts     copy-paste publishing sheet
 │  ├─ voiceover.ts   TTS (pluggable provider)
 │  ├─ visuals.ts     B-roll fetch + storyboard
-│  ├─ thumbnail.ts   1280×720 thumbnail renderer
+│  ├─ thumbnail.ts   1280×720 thumbnail renderer (A/B variants)
+│  ├─ branding.ts    channel avatar + banner renderer
 │  ├─ assemble.ts    ffmpeg video assembly
 │  ├─ youtube.ts     YouTube Data API upload
 │  ├─ calendar.ts    content calendar generator
 │  ├─ pipeline.ts    orchestrator
 │  └─ cli.ts         command-line entry
-└─ out/              generated packages (git-ignored)
+└─ out/              generated packages + brand assets (git-ignored)
 ```
+
+New to the channel? Start with [`channel/SETUP.md`](./channel/SETUP.md) — it's
+the ordered runbook from account creation to a steady operating rhythm.
 
 ---
 
