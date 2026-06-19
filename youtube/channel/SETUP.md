@@ -30,8 +30,7 @@ npm run branding            # → out/brand/avatar.png + out/brand/banner.png
 
 - [ ] Create the channel (a Brand Account, not a personal profile — easier to
       manage and transfer).
-- [ ] Handle: `@palebluemind` (or nearest available; keep it consistent across
-      platforms).
+- [ ] Handle: `@paleblueminds` (keep it consistent across platforms).
 - [ ] Channel name: **Pale Blue Mind**.
 - [ ] About / description + keywords: paste from [`about.md`](./about.md).
 - [ ] Upload avatar, banner, watermark.

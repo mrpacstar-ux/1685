@@ -38,7 +38,7 @@ export const STATE_DIR = path.join(ROOT, "..", "state");
 /** Brand constants — the single source of truth for identity in code. */
 export const BRAND = {
   name: "Pale Blue Mind",
-  handle: "@palebluemind",
+  handle: "@paleblueminds",
   tagline: "Big questions, answered with awe.",
   pillars: ["Scale", "What if", "Deep time", "Frontier", "Pale blue"] as const,
   voice:
