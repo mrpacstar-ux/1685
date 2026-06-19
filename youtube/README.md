@@ -192,6 +192,10 @@ youtube/
 New to the channel? Start with [`channel/SETUP.md`](./channel/SETUP.md) — it's
 the ordered runbook from account creation to a steady operating rhythm.
 
+Launching today? Follow the click-by-click
+[`channel/DAY1.md`](./channel/DAY1.md) — account → brand assets → API token →
+first upload → autopilot, in ~45–60 minutes.
+
 ---
 
 ## A note on responsible automation
