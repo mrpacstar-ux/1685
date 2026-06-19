@@ -1,0 +1,168 @@
+# Pale Blue Mind — concept + automation
+
+> A faceless, AI-assisted YouTube channel about space, deep time, and the
+> biggest questions in science — engineered from day one to be cheap to
+> produce, impossible to run out of ideas for, and built for the algorithm.
+
+This repo contains two things:
+
+1. **The concept** — brand bible ([`CONCEPT.md`](./CONCEPT.md)) and growth
+   playbook ([`GROWTH.md`](./GROWTH.md)).
+2. **The automation** — an end-to-end TypeScript pipeline that turns a single
+   topic into a finished, upload-ready video package (script → metadata/SEO →
+   voiceover → B-roll → thumbnail → assembled `.mp4`), with Claude as the
+   writing and ideation brain.
+
+Nothing here is tied to any other project in this repository — it's a clean,
+standalone build.
+
+---
+
+## Why this concept (the short version)
+
+A channel "as popular as you can make it" has to win on four axes at once.
+Pale Blue Mind is deliberately placed where all four overlap:
+
+| Axis | Why space / big-questions science wins |
+|---|---|
+| **Broad appeal** | Awe is universal — "how big is the universe?" needs no prior interest. The addressable audience is ~everyone, which is what the recommendation engine rewards. |
+| **Evergreen** | The content never expires. A video about black holes is as valid in 3 years as today, so the back catalogue keeps earning views and the channel compounds. |
+| **Infinite supply** | Science + history + "what if" is a bottomless topic well. The pipeline can generate a year of distinct ideas in one command. |
+| **Faceless & automatable** | No on-camera talent, no set. Narration + stock/AI visuals means every step can be scripted, scheduled, and scaled. |
+
+Full reasoning, brand voice, formats, and monetization are in
+[`CONCEPT.md`](./CONCEPT.md). The day-by-day growth strategy (the part that
+actually drives subscribers) is in [`GROWTH.md`](./GROWTH.md).
+
+---
+
+## What the automation does
+
+```
+                 topic / idea
+                      │
+        ┌─────────────▼─────────────┐
+        │   Claude (opus-4-8)       │   ideas.ts · script.ts · metadata.ts
+        │   ideas → script → SEO    │
+        └─────────────┬─────────────┘
+                      │  script + metadata + storyboard
+        ┌─────────────▼─────────────┐
+        │   voiceover.ts (TTS)      │   ElevenLabs / OpenAI / dry-run
+        │   visuals.ts  (B-roll)    │   Pexels / storyboard
+        │   thumbnail.ts (1280×720) │   sharp / SVG
+        └─────────────┬─────────────┘
+                      │  audio + clips + thumbnail
+        ┌─────────────▼─────────────┐
+        │   assemble.ts (ffmpeg)    │   → out/<slug>/video.mp4
+        └─────────────┬─────────────┘
+                      │
+        ┌─────────────▼─────────────┐
+        │   youtube.ts (Data API)   │   scheduled / private upload
+        └───────────────────────────┘
+```
+
+**Graceful degradation is the design principle.** With only an Anthropic API
+key, the pipeline produces a complete, real deliverable: a polished script,
+optimized title/description/tags, a thumbnail PNG, and a shot-by-shot
+storyboard. Add the optional keys (TTS, Pexels, YouTube OAuth) and the same
+command produces narrated audio, downloaded B-roll, a rendered `.mp4`, and an
+uploaded video. Missing a key never crashes a run — that step just emits a
+plan instead of an artifact and the pipeline continues.
+
+---
+
+## Quick start
+
+```bash
+cd youtube
+npm install
+cp .env.example .env        # add at least ANTHROPIC_API_KEY
+
+# 1. Brainstorm a batch of ideas (writes ideas to out/ideas.json)
+npm run ideas -- --count 15
+
+# 2. Generate a 4-week posting calendar from fresh ideas
+npm run calendar -- --weeks 4
+
+# 3. Produce one full video package from a topic
+npm run produce -- "What would you see falling into a black hole?"
+
+# 4. Produce the next scheduled item straight from the calendar
+npm run produce -- --from-calendar
+
+# 5. Upload a produced package (private by default)
+npm run upload -- out/what-would-you-see-falling-into-a-black-hole
+```
+
+Run `npm run run -- "<topic>"` to do produce **and** upload in one shot.
+
+A produced package (`out/<slug>/`) contains:
+
+```
+script.md          full narration script with shot directions
+script.json        structured script (segments, b-roll queries, on-screen text)
+metadata.json      title, description, tags, thumbnail text, pinned comment
+storyboard.md      human-readable shot list (always written)
+voiceover.mp3      narration audio            (if a TTS key is set)
+assets/            downloaded B-roll clips    (if PEXELS_API_KEY is set)
+thumbnail.png      1280×720 thumbnail
+video.mp4          final render               (if ffmpeg + assets present)
+```
+
+---
+
+## Configuration
+
+All config is environment variables — see [`.env.example`](./.env.example).
+Only `ANTHROPIC_API_KEY` is required.
+
+| Variable | Purpose | Required |
+|---|---|---|
+| `ANTHROPIC_API_KEY` | Claude — ideas, scripts, SEO | **Yes** |
+| `TTS_PROVIDER` | `elevenlabs` \| `openai` \| `none` | No (default `none`) |
+| `ELEVENLABS_API_KEY` / `ELEVENLABS_VOICE_ID` | ElevenLabs TTS | If `elevenlabs` |
+| `OPENAI_API_KEY` | OpenAI TTS | If `openai` |
+| `PEXELS_API_KEY` | Free stock B-roll | No |
+| `YOUTUBE_CLIENT_ID` / `_SECRET` / `_REFRESH_TOKEN` | Upload via Data API v3 | If uploading |
+
+External services are optional and are called over plain HTTP / official SDKs;
+Claude is always accessed through the official `@anthropic-ai/sdk`.
+
+---
+
+## Project layout
+
+```
+youtube/
+├─ CONCEPT.md        brand bible — niche, voice, formats, monetization
+├─ GROWTH.md         growth playbook — algorithm strategy, cadence, KPIs
+├─ src/
+│  ├─ config.ts      env + brand constants
+│  ├─ anthropic.ts   Claude client (text + structured JSON helpers)
+│  ├─ schemas.ts     zod + JSON schemas for structured generation
+│  ├─ ideas.ts       topic / idea generation
+│  ├─ script.ts      script writing (hook → segments → CTA)
+│  ├─ metadata.ts    titles, descriptions, tags, thumbnail copy
+│  ├─ voiceover.ts   TTS (pluggable provider)
+│  ├─ visuals.ts     B-roll fetch + storyboard
+│  ├─ thumbnail.ts   1280×720 thumbnail renderer
+│  ├─ assemble.ts    ffmpeg video assembly
+│  ├─ youtube.ts     YouTube Data API upload
+│  ├─ calendar.ts    content calendar generator
+│  ├─ pipeline.ts    orchestrator
+│  └─ cli.ts         command-line entry
+└─ out/              generated packages (git-ignored)
+```
+
+---
+
+## A note on responsible automation
+
+This system automates **production and publishing logistics**, not deception.
+Practices that get faceless channels banned or throttled — fabricated facts,
+reused/duplicated content, misleading thumbnails, undisclosed AI in sensitive
+contexts — are explicitly designed against here: scripts are fact-grounded and
+flagged for human review before publish, thumbnails must match content, and
+the upload step defaults to **private** so a human approves every video before
+it goes live. Popularity is pursued through quality and consistency, not
+manipulation.
