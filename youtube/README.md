@@ -99,6 +99,18 @@ npm run upload -- out/what-would-you-see-falling-into-a-black-hole
 
 Run `npm run run -- "<topic>"` to do produce **and** upload in one shot.
 
+### Fully hands-off (autopilot)
+
+```bash
+npm run autopilot -- --count 1     # produce + publish one video, no human in the loop
+```
+
+Autopilot produces the next planned idea (or a fresh one) and publishes it
+according to `PBM_PUBLISH_MODE` — default **`scheduled`** (upload private,
+auto-publish at the slot time, cancellable before it goes live). Run it on the
+included GitHub Action (`.github/workflows/palebluemind.yml`) for a channel that
+operates itself. Full guide + the honest limitations: **[`channel/AUTOPILOT.md`](./channel/AUTOPILOT.md)**.
+
 A produced package (`out/<slug>/`) contains:
 
 ```

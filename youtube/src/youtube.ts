@@ -12,6 +12,14 @@ export interface UploadResult {
   reason?: string;
 }
 
+export interface UploadOptions {
+  /** Override the default privacy for this upload. */
+  privacy?: "private" | "unlisted" | "public";
+  /** RFC3339 timestamp to auto-publish at. Forces privacy to `private` (a
+   *  YouTube requirement for scheduled videos) until that time. */
+  publishAt?: string;
+}
+
 function hasCredentials(): boolean {
   const { clientId, clientSecret, refreshToken } = CONFIG.youtube;
   return Boolean(clientId && clientSecret && refreshToken);
@@ -30,16 +38,24 @@ function oauthClient() {
  * exactly what would be uploaded. New videos default to `private` so a human
  * approves before going public.
  */
-export async function uploadPackage(dir: string): Promise<UploadResult> {
+export async function uploadPackage(
+  dir: string,
+  opts: UploadOptions = {},
+): Promise<UploadResult> {
   const meta = readJson<Metadata>(path.join(dir, "metadata.json"));
   const videoFile = path.join(dir, "video.mp4");
   const thumbFile = path.join(dir, "thumbnail.png");
   const description = renderDescription(meta);
 
+  // Scheduled uploads must be private until publishAt; otherwise use the
+  // requested/default privacy.
+  const privacy = opts.publishAt ? "private" : opts.privacy ?? CONFIG.youtube.privacy;
+  const when = opts.publishAt ? ` → auto-publish at ${opts.publishAt}` : "";
+
   if (!hasCredentials()) {
     log("info", "YouTube credentials not set — dry run.");
     log("info", `  title:   ${meta.chosen_title}`);
-    log("info", `  privacy: ${CONFIG.youtube.privacy}`);
+    log("info", `  privacy: ${privacy}${when}`);
     log("info", `  video:   ${fs.existsSync(videoFile) ? "video.mp4" : "(not rendered)"}`);
     return { status: "dry-run", reason: "no credentials" };
   }
@@ -48,7 +64,7 @@ export async function uploadPackage(dir: string): Promise<UploadResult> {
   }
 
   const youtube = google.youtube({ version: "v3", auth: oauthClient() });
-  log("run", `Uploading "${meta.chosen_title}" (${CONFIG.youtube.privacy})…`);
+  log("run", `Uploading "${meta.chosen_title}" (${privacy})${when}…`);
 
   const res = await youtube.videos.insert({
     part: ["snippet", "status"],
@@ -60,7 +76,8 @@ export async function uploadPackage(dir: string): Promise<UploadResult> {
         categoryId: "28", // Science & Technology
       },
       status: {
-        privacyStatus: CONFIG.youtube.privacy,
+        privacyStatus: privacy,
+        publishAt: opts.publishAt,
         selfDeclaredMadeForKids: false,
       },
     },

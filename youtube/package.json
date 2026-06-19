@@ -11,6 +11,7 @@
     "produce": "tsx src/cli.ts produce",
     "upload": "tsx src/cli.ts upload",
     "run": "tsx src/cli.ts run",
+    "autopilot": "tsx src/cli.ts autopilot",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {

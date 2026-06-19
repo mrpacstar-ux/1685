@@ -125,3 +125,15 @@ export function nextUnproducedSlot(): CalendarSlot | null {
   }
   return null;
 }
+
+/** Convert a calendar slot into a producible Idea. */
+export function slotToIdea(slot: CalendarSlot): Idea {
+  return {
+    title: slot.title,
+    pillar: slot.pillar as Idea["pillar"],
+    format: slot.format,
+    hook: slot.hook,
+    premise: "",
+    why_it_works: "",
+  };
+}

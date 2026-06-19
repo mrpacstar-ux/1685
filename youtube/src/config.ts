@@ -86,6 +86,18 @@ export const CONFIG = {
       | "private"
       | "unlisted"
       | "public",
+    // How the autopilot publishes:
+    //   scheduled — upload private + auto-publish at the scheduled time (default)
+    //   review    — upload private, a human publishes
+    //   public    — publish public immediately (highest risk)
+    publishMode: (process.env.PBM_PUBLISH_MODE ?? "scheduled") as
+      | "scheduled"
+      | "review"
+      | "public",
+    // UTC offset applied to calendar slot times when computing publish time.
+    tzOffset: process.env.YOUTUBE_PUBLISH_TZ_OFFSET ?? "+00:00",
+    // Fallback lead time (hours) when there is no future slot time to target.
+    publishDelayHours: Number(process.env.PBM_PUBLISH_DELAY_HOURS ?? 3),
   },
 } as const;
 

@@ -1,8 +1,9 @@
 import { requireAnthropicKey, OUT_DIR } from "./config.js";
 import path from "node:path";
 import { generateAndStoreIdeas } from "./ideas.js";
-import { generateCalendar, nextUnproducedSlot } from "./calendar.js";
+import { generateCalendar, nextUnproducedSlot, slotToIdea } from "./calendar.js";
 import { produceFromTopic, produceFromIdea } from "./pipeline.js";
+import { runAutopilot } from "./autopilot.js";
 import { makeBrandAssets } from "./branding.js";
 import { uploadPackage } from "./youtube.js";
 import type { Idea } from "./schemas.js";
@@ -43,6 +44,8 @@ Usage:
   npm run produce  -- "<topic>"  | --from-calendar  [--short]
   npm run upload   -- out/<slug>
   npm run run      -- "<topic>" [--short]            (produce + upload)
+  npm run autopilot -- [--count N] [--theme "..."] [--short]
+                                                     (hands-off: produce + publish)
 `;
 
 async function main(): Promise<void> {
@@ -83,15 +86,7 @@ async function main(): Promise<void> {
           log("warn", "No unproduced slots in the calendar. Run `calendar` first.");
           break;
         }
-        const idea: Idea = {
-          title: slot.title,
-          pillar: slot.pillar as Idea["pillar"],
-          format: slot.format,
-          hook: slot.hook,
-          premise: "",
-          why_it_works: "",
-        };
-        await produceFromIdea(idea);
+        await produceFromIdea(slotToIdea(slot));
       } else {
         const topic = positionals[0];
         if (!topic) {
@@ -123,6 +118,16 @@ async function main(): Promise<void> {
       const format: "short" | "long" = flags.short ? "short" : "long";
       const result = await produceFromTopic(topic, format);
       await uploadPackage(result.dir);
+      break;
+    }
+
+    case "autopilot": {
+      requireAnthropicKey();
+      await runAutopilot({
+        count: Number(flags.count ?? 1),
+        theme: typeof flags.theme === "string" ? flags.theme : undefined,
+        format: flags.short ? "short" : flags.long ? "long" : undefined,
+      });
       break;
     }
 
