@@ -41,15 +41,15 @@ class FakePsaEcu(Elm327):
 
     def _ecu(self, hexcmd):
         # Only reachable via KWP fast init, physically addressed to 0x10.
-        if self.proto != "5" or self.header != "8010F1":
+        if self.proto != "5" or self.header != "8110F1":
             return ["UNABLE TO CONNECT"]
-        if hexcmd == "1081":
-            return ["50 81"]
-        if hexcmd == "1800FF00":
+        if hexcmd == "81":          # StartCommunication (ddt4all-style)
+            return ["C1 EF 8F"]
+        if hexcmd == "17FF00":
             if self.cleared:
-                return ["58 00"]
+                return ["57 00"]
             # two DTCs: P0135 (active) and P0505 (stored)
-            return ["58 02 01 35 E0 05 05 61"]
+            return ["57 02 01 35 E0 05 05 61"]
         if hexcmd == "14FF00":
             self.cleared = True
             return ["54 FF 00"]
@@ -78,6 +78,29 @@ class DecodeTests(unittest.TestCase):
         self.assertFalse(dtcs[1].is_active)
 
 
+class KLineFramingTests(unittest.TestCase):
+    """The raw-cable backend's frame splitter (no serial port involved)."""
+
+    @staticmethod
+    def _frame(target, source, payload):
+        f = bytes([0x80 | len(payload), target, source]) + payload
+        return f + bytes([sum(f) & 0xFF])
+
+    def test_split_two_frames(self):
+        from psadiag.kline import KLine
+        a = self._frame(0xF1, 0x10, bytes.fromhex("7E"))
+        b = self._frame(0xF1, 0x10, bytes.fromhex("570201 35E0 050561".replace(" ", "")))
+        frames = KLine._split_frames(a + b)
+        self.assertEqual(frames, [a, b])
+        dtcs = parse_dtc_reply([frames[1]], 0x17)
+        self.assertEqual([d.code for d in dtcs], ["P0135", "P0505"])
+
+    def test_garbage_returned_whole(self):
+        from psadiag.kline import KLine
+        raw = bytes.fromhex("55EF8F")   # sync/key bytes, not a KWP frame
+        self.assertEqual(KLine._split_frames(raw), [raw])
+
+
 class LadderTests(unittest.TestCase):
     def setUp(self):
         self.elm = FakePsaEcu()
@@ -87,7 +110,7 @@ class LadderTests(unittest.TestCase):
         conn = connect(self.elm, status=lambda m: None)
         self.assertEqual(conn.profile.name, "kwp-fast-psa")
         self.assertEqual(conn.target, 0x10)
-        self.assertEqual(conn.session_byte, 0x81)
+        self.assertEqual(conn.session, bytes([0x81]))
 
     def test_read_and_clear(self):
         conn = connect(self.elm, status=lambda m: None)

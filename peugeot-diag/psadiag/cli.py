@@ -55,6 +55,14 @@ def _print_codes(dtcs) -> None:
 
 
 def cmd_scan(args) -> int:
+    if args.kkl:
+        conn = _connect_kkl(args)
+        try:
+            _status(f"Link up ({conn.describe()}); reading fault codes ...")
+            _print_codes(conn.read_dtcs(status=_status))
+            return 0
+        finally:
+            conn.close()
     elm = _open_adapter(args)
     try:
         conn = _connect(args, elm)
@@ -65,7 +73,37 @@ def cmd_scan(args) -> int:
         elm.close()
 
 
+def _connect_kkl(args):
+    from .kline import connect_kkl
+    if not args.port:
+        raise AdapterError("raw K-line mode needs an explicit port: "
+                           "psa-diag --kkl -p /dev/ttyUSB0 (or COMx) ...")
+    _status("Raw K-line mode (KKL cable); connecting to the ECU ...")
+    return connect_kkl(args.port, verbose=args.verbose, status=_status)
+
+
 def cmd_clear(args) -> int:
+    if args.kkl:
+        conn = _connect_kkl(args)
+        try:
+            dtcs = conn.read_dtcs(status=_status)
+            _print_codes(dtcs)
+            if not dtcs and not args.force:
+                print("Nothing to clear.")
+                return 0
+            if not args.yes:
+                answer = input("Clear these codes? Freeze-frame data is lost "
+                               "and a real fault will come straight back. [y/N] ")
+                if answer.strip().lower() not in ("y", "yes"):
+                    print("Not cleared.")
+                    return 1
+            if conn.clear_dtcs(status=_status):
+                print("Codes cleared. ✓  (Cycle the ignition, then re-scan.)")
+                return 0
+            print("The ECU refused the clear request — codes NOT cleared.")
+            return 1
+        finally:
+            conn.close()
     elm = _open_adapter(args)
     try:
         conn = _connect(args, elm)
@@ -128,6 +166,9 @@ def main(argv=None) -> int:
                         help="adapter baud rate (default 38400)")
     parser.add_argument("--profile", choices=[p.name for p in PROFILES],
                         help="force one init strategy instead of trying all")
+    parser.add_argument("--kkl", action="store_true",
+                        help="raw K-line mode for dumb KKL/VAG-409.1 cables "
+                             "(no ELM chip; needs -p PORT)")
     parser.add_argument("-v", "--verbose", action="store_true",
                         help="show raw serial traffic")
 

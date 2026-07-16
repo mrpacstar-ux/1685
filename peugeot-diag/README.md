@@ -60,6 +60,10 @@ python -m psadiag -p COM3 scan       # explicit serial port (Windows)
 python -m psadiag -p /dev/ttyUSB0 scan   # explicit port (Linux)
 python -m psadiag --profile kwp-fast-psa scan   # skip straight to one strategy
 python -m psadiag terminal           # raw AT/hex terminal for experimenting
+
+# with a dumb KKL/VAG-409.1 cable instead of an ELM327:
+python -m psadiag --kkl -p COM3 scan
+python -m psadiag --kkl -p /dev/ttyUSB0 clear
 ```
 
 Do everything with **ignition ON, engine OFF** first. Connection can take
@@ -88,21 +92,24 @@ confirmation. Freeze-frame data is lost when you clear.
 
 ## Hardware
 
-You need an interface whose K-line support actually works:
+Two supported interface families (full buying guide, with the why and the
+clone traps, in **[HARDWARE.md](HARDWARE.md)**):
 
-- **Genuine-chip ELM327 v1.4b/1.5 USB** — the cheap route. Must be a real
-  PIC-based unit (or a good clone that implements `ATSP4/5`, `ATIIA`,
-  `ATSH` correctly). Many £5 clones only do CAN properly and lie about
-  everything else; if `psa-diag terminal` rejects `ATIIA 10` with `?`,
-  the clone is the problem.
-- **Lexia 3 / Diagbox clone interface** — the full-fat route. Runs
-  Peugeot's own dealer software (Diagbox replaced PP2000 and still covers
-  these cars), does every ECU in the car, coding, actuator tests. Doesn't
-  work with this tool (proprietary interface), but it's the definitive
-  answer if the ELM route disappoints.
+- **VAG KKL 409.1 cable (FTDI chip), ~£12** — recommended. A dumb raw
+  K-line cable; use `--kkl` mode, where this tool performs the 5-baud
+  init itself, bit-perfect, at every PSA ECU address. No ELM firmware
+  lottery involved.
+- **ELM327-compatible USB** — the default mode. Genuine ELM327s are no
+  longer made; the reliable modern equivalent is an **OBDLink SX**
+  (~£30). Cheap "v1.5" clones often corrupt exactly the K-line protocols
+  this car uses — if `psa-diag terminal` answers `ATIIA 10` with `?`,
+  the clone is the problem, not the car.
 
-*(Detailed buying guidance, connector/pinout notes for the 306, and the
-engine-swap wiring caveat are in [HARDWARE.md](HARDWARE.md).)*
+If you want Peugeot's own dealer software instead (actuator tests,
+injector coding, every ECU in the car), the modern answer to "where do I
+get PP2000" is a **Lexia 3 "full chip 921815C" clone with Diagbox**
+(~£40–70) — Diagbox contains PP2000 for old cars. Details and caveats in
+HARDWARE.md.
 
 ## The engine-swap caveat
 

@@ -7,13 +7,7 @@ import time
 from dataclasses import dataclass
 
 from .elm327 import AdapterError, BusError, Elm327
-from .kwp import (
-    Dtc,
-    NegativeResponse,
-    SID_START_DIAG_SESSION,
-    parse_dtc_reply,
-    strip_header,
-)
+from .kwp import Dtc, NegativeResponse, parse_dtc_reply, strip_header
 from .profiles import PROFILES, Profile
 
 
@@ -22,14 +16,14 @@ class Connection:
     elm: Elm327
     profile: Profile
     target: int | None
-    session_byte: int | None
+    session: bytes | None
 
     def describe(self) -> str:
         parts = [self.profile.name]
         if self.target is not None:
             parts.append(f"target 0x{self.target:02X}")
-        if self.session_byte is not None:
-            parts.append(f"session 0x{self.session_byte:02X}")
+        if self.session is not None:
+            parts.append(f"session {self.session.hex().upper()}")
         return ", ".join(parts)
 
 
@@ -50,17 +44,17 @@ def _try_request(elm: Elm327, payload: bytes, timeout: float):
     return frames
 
 
-def _start_session(elm: Elm327, session_byte: int | None, timeout: float) -> bool:
-    if session_byte is None:
+def _start_session(elm: Elm327, request: bytes | None, timeout: float) -> bool:
+    if request is None:
         return True
-    payload = bytes([SID_START_DIAG_SESSION, session_byte])
     try:
-        frames = elm.request(payload, timeout=timeout)
+        frames = elm.request(request, timeout=timeout)
     except BusError:
         return False
     for frame in frames:
         try:
-            if strip_header(frame, SID_START_DIAG_SESSION):
+            # positive response SID = request SID + 0x40 (81 -> C1, 10 -> 50)
+            if strip_header(frame, request[0]):
                 return True
         except NegativeResponse:
             return False
@@ -82,26 +76,34 @@ def connect(elm: Elm327, profiles: list[Profile] | None = None,
             try:
                 elm.at("ATPC")  # drop any previous bus session
                 for cmd in profile.setup_for(target):
-                    elm.at(cmd)
+                    if cmd.startswith("?"):
+                        # optional command — clone adapters may reject it,
+                        # and ATSI/ATFI report bus errors we handle later
+                        try:
+                            elm.command(cmd[1:], timeout=profile.init_timeout)
+                        except AdapterError:
+                            pass
+                    else:
+                        elm.at(cmd)
             except AdapterError as exc:
                 attempts.append(f"{label}: adapter: {exc}")
                 continue
 
-            for session_byte in profile.sessions:
-                if not _start_session(elm, session_byte, profile.init_timeout):
-                    if session_byte is not None:
+            for session in profile.sessions:
+                if not _start_session(elm, session, profile.init_timeout):
+                    if session is not None:
                         continue
                 # Prove the link with an actual DTC read attempt.
                 for read in profile.reads:
                     try:
                         elm.request(read, timeout=profile.init_timeout)
                         status(f"  connected: {label}")
-                        return Connection(elm, profile, target, session_byte)
+                        return Connection(elm, profile, target, session)
                     except NegativeResponse:
                         # ECU spoke to us — the link is up, even if it
                         # dislikes this particular read.
                         status(f"  connected: {label}")
-                        return Connection(elm, profile, target, session_byte)
+                        return Connection(elm, profile, target, session)
                     except BusError:
                         continue
             attempts.append(f"{label}: no response")
