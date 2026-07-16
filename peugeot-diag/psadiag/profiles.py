@@ -25,11 +25,13 @@ PSA_ENGINE_TARGETS = (0x10, 0x33, 0x01, 0x11, 0x28)
 # ECUs talk without one.
 SESSION_BYTES = (0x81, 0xC0, None)
 
-# DTC read requests to attempt, in order of how widely they work.
+# DTC read requests to attempt, in order of how widely they work on PSA.
+# 17 FF 00 / 14 FF 00 are the requests PSA's own tooling uses for KWP ECUs
+# (documented by the arduino-psa-diag / PSA-RE reverse-engineering work).
 READ_REQUESTS = (
+    bytes([0x17, 0xFF, 0x00]),        # readStatusOfDTC, all groups — PSA standard
     bytes([0x18, 0x00, 0xFF, 0x00]),  # readDTCByStatus: all identified, group FF00
     bytes([0x18, 0x02, 0xFF, 0x00]),  # readDTCByStatus: all supported
-    bytes([0x17, 0xFF, 0x00]),        # readStatusOfDTC, group FF00
     bytes([0x13]),                    # readDiagnosticTroubleCodes (older units)
     bytes([0x03]),                    # OBD-II mode 03 (EOBD-capable ECUs)
     bytes([0x07]),                    # OBD-II mode 07 (pending)
@@ -105,6 +107,18 @@ PROFILES: tuple[Profile, ...] = (
         reads=(bytes([0x03]), bytes([0x07])),
         clears=(bytes([0x04]),),
         init_timeout=18.0,
+    ),
+    Profile(
+        name="kwp-can-psa",
+        description="KWP2000-on-CAN at PSA engine ECU IDs 6A8/688 "
+                    "(late 206-era ECUs, needs CAN wired to pins 6/14)",
+        setup=_COMMON + (
+            "ATSP6",         # ISO 15765-4, 11-bit, 500 kbit
+            "ATSH 6A8",      # PSA engine ECU request ID
+            "ATCRA 688",     # ... and its reply ID
+            "ATFCSH 6A8",    # flow control from the same ID
+        ),
+        sessions=(0xC0, 0x81, None),
     ),
 )
 
