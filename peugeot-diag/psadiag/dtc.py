@@ -1,0 +1,137 @@
+"""Human-readable descriptions for fault codes.
+
+Generic SAE P-codes (ISO 15031-6) that actually occur on the petrol and
+diesel engines fitted to 206/306-era PSA cars, plus a few PSA-specific
+ranges. Unknown codes still print — just without a description.
+"""
+
+DESCRIPTIONS = {
+    # --- Air / fuel metering -------------------------------------------------
+    "P0100": "Mass or volume air flow circuit",
+    "P0101": "MAF circuit range/performance",
+    "P0102": "MAF circuit low input",
+    "P0103": "MAF circuit high input",
+    "P0105": "Manifold absolute pressure (MAP) circuit",
+    "P0106": "MAP circuit range/performance",
+    "P0107": "MAP circuit low input",
+    "P0108": "MAP circuit high input",
+    "P0110": "Intake air temperature sensor circuit",
+    "P0112": "Intake air temp sensor low input",
+    "P0113": "Intake air temp sensor high input",
+    "P0115": "Engine coolant temperature sensor circuit",
+    "P0116": "Coolant temp sensor range/performance",
+    "P0117": "Coolant temp sensor low input",
+    "P0118": "Coolant temp sensor high input",
+    "P0120": "Throttle position sensor circuit",
+    "P0121": "TPS range/performance",
+    "P0122": "TPS low input",
+    "P0123": "TPS high input",
+    "P0130": "Lambda (O2) sensor circuit, bank 1 sensor 1",
+    "P0131": "O2 sensor low voltage, B1S1",
+    "P0132": "O2 sensor high voltage, B1S1",
+    "P0133": "O2 sensor slow response, B1S1",
+    "P0134": "O2 sensor no activity, B1S1",
+    "P0135": "O2 sensor heater circuit, B1S1",
+    "P0136": "O2 sensor circuit, bank 1 sensor 2 (post-cat)",
+    "P0140": "O2 sensor no activity, B1S2",
+    "P0141": "O2 sensor heater circuit, B1S2",
+    "P0170": "Fuel trim malfunction, bank 1",
+    "P0171": "System too lean, bank 1",
+    "P0172": "System too rich, bank 1",
+    "P0180": "Fuel temperature sensor circuit (diesel)",
+    "P0190": "Fuel rail pressure sensor circuit (HDi)",
+    "P0191": "Fuel rail pressure sensor range/performance (HDi)",
+    "P0192": "Fuel rail pressure sensor low input (HDi)",
+    "P0193": "Fuel rail pressure sensor high input (HDi)",
+    # --- Injectors / misfire -------------------------------------------------
+    "P0200": "Injector circuit malfunction",
+    "P0201": "Injector circuit, cylinder 1",
+    "P0202": "Injector circuit, cylinder 2",
+    "P0203": "Injector circuit, cylinder 3",
+    "P0204": "Injector circuit, cylinder 4",
+    "P0230": "Fuel pump primary circuit",
+    "P0300": "Random/multiple cylinder misfire detected",
+    "P0301": "Cylinder 1 misfire",
+    "P0302": "Cylinder 2 misfire",
+    "P0303": "Cylinder 3 misfire",
+    "P0304": "Cylinder 4 misfire",
+    "P0325": "Knock sensor circuit",
+    "P0335": "Crankshaft position sensor circuit",
+    "P0336": "Crank sensor range/performance",
+    "P0340": "Camshaft position sensor circuit",
+    "P0341": "Cam sensor range/performance",
+    "P0380": "Glow plug circuit (diesel)",
+    # --- EGR / emissions -----------------------------------------------------
+    "P0400": "Exhaust gas recirculation flow",
+    "P0401": "EGR insufficient flow",
+    "P0402": "EGR excessive flow",
+    "P0403": "EGR circuit malfunction",
+    "P0420": "Catalyst efficiency below threshold, bank 1",
+    "P0440": "Evaporative emission control system",
+    "P0443": "EVAP purge valve circuit",
+    # --- Vehicle speed / idle ------------------------------------------------
+    "P0500": "Vehicle speed sensor",
+    "P0505": "Idle control system",
+    "P0560": "System voltage malfunction",
+    "P0562": "System voltage low",
+    "P0563": "System voltage high",
+    # --- Computer / immobiliser ---------------------------------------------
+    "P0600": "Serial communication link",
+    "P0601": "ECU internal memory checksum error",
+    "P0602": "ECU programming error",
+    "P0603": "ECU keep-alive memory error",
+    "P0604": "ECU RAM error",
+    "P0605": "ECU ROM error",
+    "P0606": "ECU processor fault",
+    "P0615": "Starter relay circuit",
+    "P0620": "Generator control circuit",
+    "P0645": "A/C clutch relay circuit",
+    "P0650": "MIL (engine warning lamp) control circuit",
+    "P0660": "Intake manifold tuning valve circuit",
+    # --- Transmission / misc -------------------------------------------------
+    "P0704": "Clutch switch input circuit",
+    "P0705": "Transmission range sensor circuit",
+    "P0715": "Turbine speed sensor circuit",
+    # --- PSA-specific ranges frequently seen on 206/306 ECUs -----------------
+    "P1110": "PSA: inlet air control",
+    "P1112": "PSA: intake air temp signal",
+    "P1113": "PSA: intake air temp signal",
+    "P1135": "PSA: O2 sensor heater control",
+    "P1152": "PSA: mixture regulation limit (rich)",
+    "P1153": "PSA: mixture regulation limit (lean)",
+    "P1160": "PSA: fuel supply / regulation",
+    "P1336": "PSA: misfire, catalyst damaging",
+    "P1337": "PSA: misfire cylinder detection",
+    "P1338": "PSA: misfire detection",
+    "P1340": "PSA: camshaft/crankshaft synchronisation",
+    "P1351": "PSA: pre/post heating relay circuit (diesel)",
+    "P1352": "PSA: glow plug relay (diesel)",
+    "P1403": "PSA: EGR valve control",
+    "P1425": "PSA: canister purge",
+    "P1461": "PSA: cooling fan control circuit",
+    "P1462": "PSA: cooling fan control circuit",
+    "P1490": "PSA: refrigerant pressure sensor",
+    "P1505": "PSA: idle speed control, lower limit",
+    "P1506": "PSA: idle speed control, upper limit",
+    "P1507": "PSA: idle regulation",
+    "P1508": "PSA: idle regulation",
+    "P1517": "PSA: immobiliser — ECU locked / no valid key code",
+    "P1519": "PSA: immobiliser code fault",
+    "P1520": "PSA: immobiliser — wrong or missing transponder reply",
+    "P1521": "PSA: immobiliser link fault",
+    "P1600": "PSA: ECU supply voltage / main relay",
+    "P1613": "PSA: immobiliser antenna/reader fault",
+    "P1621": "PSA: immobiliser — code not programmed",
+    "P1622": "PSA: immobiliser — link to BSI",
+    "P1656": "PSA: multiplex (VAN/CAN) communication with BSI",
+}
+
+
+def describe(code: str) -> str:
+    if code in DESCRIPTIONS:
+        return DESCRIPTIONS[code]
+    if code.startswith("P1"):
+        return "Manufacturer-specific (PSA) code — check model-specific list"
+    if code.startswith("U"):
+        return "Network/communication code (BSI / multiplex wiring)"
+    return "No description on file (generic lists may still cover it)"

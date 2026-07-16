@@ -1,0 +1,16 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "psadiag"
+version = "0.1.0"
+description = "Read/clear engine fault codes on KWP2000-era Peugeot/Citroën via ELM327"
+requires-python = ">=3.9"
+dependencies = ["pyserial>=3.4"]
+
+[project.scripts]
+psa-diag = "psadiag.cli:main"
+
+[tool.setuptools]
+packages = ["psadiag"]
