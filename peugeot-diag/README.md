@@ -34,6 +34,22 @@ python -m psadiag scan
 
 (or `pip install .` to get a `psa-diag` command.)
 
+### Windows quickstart (from zero)
+
+1. Install Python from [python.org](https://www.python.org/downloads/) —
+   tick **"Add python.exe to PATH"** in the installer.
+2. Plug in the USB interface. If Windows doesn't recognise it, install the
+   driver for its USB chip (CH340, CP2102 or FTDI — the listing usually
+   says which).
+3. Find the COM port: Device Manager → **Ports (COM & LPT)** → e.g.
+   `USB-SERIAL CH340 (COM3)`.
+4. In a Command Prompt inside this folder:
+
+   ```
+   pip install pyserial
+   python -m psadiag -p COM3 scan
+   ```
+
 ## Usage
 
 ```
