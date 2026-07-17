@@ -12,5 +12,8 @@ dependencies = ["pyserial>=3.4"]
 [project.scripts]
 psa-diag = "psadiag.cli:main"
 
+[project.gui-scripts]
+psa-diag-gui = "psadiag.gui:main"
+
 [tool.setuptools]
 packages = ["psadiag"]

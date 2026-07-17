@@ -180,8 +180,12 @@ def main(argv=None) -> int:
     p_clear.add_argument("--force", action="store_true",
                          help="send the clear even if no codes were read")
     sub.add_parser("terminal", help="raw AT/hex terminal")
+    sub.add_parser("gui", help="open the point-and-click window")
 
     args = parser.parse_args(argv)
+    if args.command == "gui":
+        from .gui import main as gui_main
+        return gui_main()
     handler = {"clear": cmd_clear, "terminal": cmd_terminal}.get(
         args.command, cmd_scan)
     try:

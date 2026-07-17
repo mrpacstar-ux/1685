@@ -34,6 +34,25 @@ python -m psadiag scan
 
 (or `pip install .` to get a `psa-diag` command.)
 
+## The GUI (`python -m psadiag gui`)
+
+A scanner-style window, like any handheld code reader:
+
+- **Fault codes** tab — Scan, then Clear selected or Clear all. Codes show
+  with a plain-English description and whether they're present now or just
+  stored history.
+- **Live data** tab — Start/Stop live readings at ~1 Hz (engine rpm,
+  coolant/air temp, rail pressure, boost, commanded EGR, MAF… whatever
+  your ECU answers).
+- **ECU info** tab — reads the VIN and the ECU's identification strings,
+  including the **software/calibration number** (this is your evidence of
+  whether the engine has already been remapped — see TUNING.md).
+
+Uses Python's built-in Tk, so on Windows it just works after
+`pip install pyserial`. On Linux you may need the system Tk package
+(`sudo apt install python3-tk`). Everything the GUI does is also on the
+command line below.
+
 ### Windows quickstart (from zero)
 
 1. Install Python from [python.org](https://www.python.org/downloads/) —
@@ -53,6 +72,7 @@ python -m psadiag scan
 ## Usage
 
 ```
+python -m psadiag gui                # point-and-click scanner window
 python -m psadiag scan               # find adapter, connect, read codes
 python -m psadiag clear              # read codes, confirm, clear them
 python -m psadiag -v scan            # show raw serial traffic (debugging)
