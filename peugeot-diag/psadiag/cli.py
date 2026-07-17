@@ -131,16 +131,16 @@ def cmd_clear(args) -> int:
 
 def cmd_systems(args) -> int:
     """Scan every known PSA module for fault codes, Lexia-style."""
-    from .modules import PSA_MODULES
+    from .modules import kline_modules
     if args.kkl:
         raise AdapterError("multi-system scan currently needs the ELM327 "
                            "backend (not --kkl); use the engine scan for KKL.")
     elm = _open_adapter(args)
     results = []
     try:
-        for module in PSA_MODULES:
-            _status(f"\n=== {module.name} (socket pin {module.pin}"
-                    f"{'' if module.verified else ', addresses unverified'}) ===")
+        for module in kline_modules():
+            _status(f"\n=== {module.name} (socket pin {module.pin}) ===")
+            _status(f"    {module.note}")
             try:
                 conn = connect(elm, targets=module.addresses, status=_status)
             except BusError:
@@ -156,16 +156,18 @@ def cmd_systems(args) -> int:
     for module, dtcs in results:
         if dtcs is None:
             print(f"  {module.name:24} no response "
-                  f"(pin {module.pin} wired? module fitted?)")
+                  f"(cable switched to pin {module.pin}? module fitted?)")
         elif not dtcs:
             print(f"  {module.name:24} no fault codes ✓")
         else:
             print(f"  {module.name:24} {len(dtcs)} code(s):")
             for d in dtcs:
                 print(f"      {d.code}  {describe(d.code)}")
-    print("\nNote: a 'no response' on a pre-BSI car usually means the cable "
-          "isn't\nwired to that system's pin — not that the system is fault-"
-          "free. See HARDWARE.md.")
+    print("\nNote: on a pre-BSI car each system is on a different socket pin "
+          "(engine 7,\nABS 12, airbag 13). A single-pin cable only reaches the "
+          "engine; to read the\nothers you need a cable with a pin-select "
+          "switch (set it per system, then\nrescan) or a re-pinned adapter. "
+          "See HARDWARE.md.")
     return 0
 
 

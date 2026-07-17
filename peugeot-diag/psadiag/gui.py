@@ -64,11 +64,11 @@ class ScannerSession:
         Returns a list of (Module, dtcs_or_None). None = no response, which
         on a pre-BSI car usually means the cable isn't on that pin.
         """
-        from .modules import PSA_MODULES, get_module
+        from .modules import get_module, kline_modules
         if self.kkl:
             return [(get_module("engine"), self.conn.read_dtcs(status=status))]
         results = []
-        for module in PSA_MODULES:
+        for module in kline_modules():
             status(f"=== {module.name} (pin {module.pin}) ===")
             try:
                 conn = connect(self.elm, targets=module.addresses, status=status)
