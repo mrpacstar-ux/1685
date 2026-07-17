@@ -73,8 +73,10 @@ command line below.
 
 ```
 python -m psadiag gui                # point-and-click scanner window
-python -m psadiag scan               # find adapter, connect, read codes
+python -m psadiag scan               # find adapter, connect, read engine codes
+python -m psadiag systems            # scan every PSA module (Lexia-style)
 python -m psadiag clear              # read codes, confirm, clear them
+python -m psadiag tune               # check whether the ECU is already remapped
 python -m psadiag -v scan            # show raw serial traffic (debugging)
 python -m psadiag -p COM3 scan       # explicit serial port (Windows)
 python -m psadiag -p /dev/ttyUSB0 scan   # explicit port (Linux)

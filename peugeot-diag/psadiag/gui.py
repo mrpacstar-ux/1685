@@ -58,6 +58,27 @@ class ScannerSession:
             return self.conn.read_dtcs(status=status)
         return read_dtcs(self.conn, status=status)
 
+    def scan_systems(self, status):
+        """Read codes from every known PSA module (ELM backend only).
+
+        Returns a list of (Module, dtcs_or_None). None = no response, which
+        on a pre-BSI car usually means the cable isn't on that pin.
+        """
+        from .modules import PSA_MODULES, get_module
+        if self.kkl:
+            return [(get_module("engine"), self.conn.read_dtcs(status=status))]
+        results = []
+        for module in PSA_MODULES:
+            status(f"=== {module.name} (pin {module.pin}) ===")
+            try:
+                conn = connect(self.elm, targets=module.addresses, status=status)
+            except BusError:
+                status(f"  no response from {module.name}")
+                results.append((module, None))
+                continue
+            results.append((module, read_dtcs(conn, status=status)))
+        return results
+
     def clear_all(self, status) -> bool:
         if self.kkl:
             return self.conn.clear_dtcs(status=status)
@@ -149,8 +170,11 @@ class App:
         nb.add(faults, text="  Fault codes  ")
         ftb = ttk.Frame(faults)
         ftb.pack(fill="x", pady=(0, 6))
-        self.scan_btn = ttk.Button(ftb, text="Scan", command=self.on_scan)
+        self.scan_btn = ttk.Button(ftb, text="Scan engine", command=self.on_scan)
         self.scan_btn.pack(side="left")
+        self.scan_all_btn = ttk.Button(ftb, text="Scan all systems",
+                                       command=self.on_scan_all)
+        self.scan_all_btn.pack(side="left", padx=6)
         self.clear_sel_btn = ttk.Button(ftb, text="Clear selected",
                                         command=self.on_clear_selected)
         self.clear_sel_btn.pack(side="left", padx=6)
@@ -171,6 +195,7 @@ class App:
             self.table.heading(col, text=text)
             self.table.column(col, width=width, anchor="w", stretch=stretch)
         self.table.tag_configure("active", foreground="#b00020")
+        self.table.tag_configure("muted", foreground="#888")
         vsb = ttk.Scrollbar(faults, orient="vertical", command=self.table.yview)
         self.table.configure(yscrollcommand=vsb.set)
         self.table.pack(side="left", fill="both", expand=True)
@@ -263,9 +288,9 @@ class App:
         ttk.Label(root, textvariable=self.status_var, relief="sunken",
                   anchor="w", padding=4).pack(fill="x", side="bottom")
 
-        self._action_buttons = (self.scan_btn, self.clear_sel_btn,
-                                self.clear_all_btn, self.live_btn,
-                                self.info_btn, self.tune_btn)
+        self._action_buttons = (self.scan_btn, self.scan_all_btn,
+                                self.clear_sel_btn, self.clear_all_btn,
+                                self.live_btn, self.info_btn, self.tune_btn)
         self._set_connected(False)
 
     # -------------------------------------------------------------- helpers
@@ -329,7 +354,12 @@ class App:
                      "Connecting — old K-line inits are slow, give it a minute ...")
 
     def on_scan(self):
-        self._submit(self._job_scan, "Reading fault codes ...")
+        self._submit(self._job_scan, "Reading engine fault codes ...")
+
+    def on_scan_all(self):
+        self._submit(self._job_scan_all,
+                     "Scanning every system — this walks each ECU, give it "
+                     "time ...")
 
     def on_clear_all(self):
         if messagebox.askyesno(
@@ -416,6 +446,15 @@ class App:
         put(("done", "No fault codes stored ✓" if not dtcs
              else f"{len(dtcs)} fault code(s) found."))
 
+    def _job_scan_all(self):
+        put = self.msgq.put
+        results = self.session.scan_systems(lambda m: put(("log", m)))
+        put(("systems", results))
+        total = sum(len(d) for _, d in results if d)
+        reached = sum(1 for _, d in results if d is not None)
+        put(("done", f"Scanned {len(results)} systems, {reached} responded, "
+                     f"{total} code(s) total."))
+
     def _job_clear(self, codes):
         put = self.msgq.put
         status = lambda m: put(("log", m))
@@ -465,8 +504,26 @@ class App:
         put(("tune", report))
         put(("done", report.headline))
 
+    def _show_systems(self, results):
+        self.table.delete(*self.table.get_children())
+        for module, dtcs in results:
+            if dtcs is None:
+                self.table.insert("", "end", tags=("muted",), values=(
+                    "—", f"[{module.name}] no response — pin {module.pin} "
+                         "wired? module fitted?", ""))
+            elif not dtcs:
+                self.table.insert("", "end", tags=("muted",), values=(
+                    "✓", f"[{module.name}] no fault codes", ""))
+            else:
+                for d in dtcs:
+                    state = ("PRESENT NOW" if d.is_active is True else
+                             "stored" if d.is_active is False else "")
+                    tag = "active" if d.is_active is True else ""
+                    self.table.insert("", "end", tags=(tag,) if tag else (), values=(
+                        d.code, f"[{module.name}] {describe(d.code)}", state))
+
     def _show_tune(self, report):
-        colour = {"stock": "#1a7f37", "reflashed": "#b00020",
+        colour = {"clean": "#1a7f37", "reflashed": "#b00020",
                   "unknown": "#9a6700"}.get(report.verdict, "#777")
         self.tune_verdict.configure(text=report.headline, foreground=colour)
         self.tune_reasons.configure(state="normal")
@@ -488,6 +545,8 @@ class App:
                     self.log_line(payload)
                 elif kind == "dtcs":
                     self.show_dtcs(payload)
+                elif kind == "systems":
+                    self._show_systems(payload)
                 elif kind == "connected":
                     self._set_connected(True, payload)
                 elif kind == "disconnected":

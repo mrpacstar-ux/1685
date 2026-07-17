@@ -129,6 +129,46 @@ def cmd_clear(args) -> int:
         elm.close()
 
 
+def cmd_systems(args) -> int:
+    """Scan every known PSA module for fault codes, Lexia-style."""
+    from .modules import PSA_MODULES
+    if args.kkl:
+        raise AdapterError("multi-system scan currently needs the ELM327 "
+                           "backend (not --kkl); use the engine scan for KKL.")
+    elm = _open_adapter(args)
+    results = []
+    try:
+        for module in PSA_MODULES:
+            _status(f"\n=== {module.name} (socket pin {module.pin}"
+                    f"{'' if module.verified else ', addresses unverified'}) ===")
+            try:
+                conn = connect(elm, targets=module.addresses, status=_status)
+            except BusError:
+                _status(f"  no response from {module.name}")
+                results.append((module, None))
+                continue
+            dtcs = read_dtcs(conn, status=_status)
+            results.append((module, dtcs))
+    finally:
+        elm.close()
+
+    print("\n================ Multi-system summary ================")
+    for module, dtcs in results:
+        if dtcs is None:
+            print(f"  {module.name:24} no response "
+                  f"(pin {module.pin} wired? module fitted?)")
+        elif not dtcs:
+            print(f"  {module.name:24} no fault codes ✓")
+        else:
+            print(f"  {module.name:24} {len(dtcs)} code(s):")
+            for d in dtcs:
+                print(f"      {d.code}  {describe(d.code)}")
+    print("\nNote: a 'no response' on a pre-BSI car usually means the cable "
+          "isn't\nwired to that system's pin — not that the system is fault-"
+          "free. See HARDWARE.md.")
+    return 0
+
+
 def cmd_tune(args) -> int:
     from .tune import check_tune
     if args.kkl:
@@ -204,6 +244,7 @@ def main(argv=None) -> int:
                          help="clear without asking")
     p_clear.add_argument("--force", action="store_true",
                          help="send the clear even if no codes were read")
+    sub.add_parser("systems", help="scan every PSA module for codes (Lexia-style)")
     sub.add_parser("tune", help="check whether the ECU is already remapped")
     sub.add_parser("terminal", help="raw AT/hex terminal")
     sub.add_parser("gui", help="open the point-and-click window")
@@ -212,7 +253,7 @@ def main(argv=None) -> int:
     if args.command == "gui":
         from .gui import main as gui_main
         return gui_main()
-    handler = {"clear": cmd_clear, "tune": cmd_tune,
+    handler = {"clear": cmd_clear, "tune": cmd_tune, "systems": cmd_systems,
                "terminal": cmd_terminal}.get(args.command, cmd_scan)
     try:
         return handler(args)

@@ -62,15 +62,21 @@ def _start_session(elm: Elm327, request: bytes | None, timeout: float) -> bool:
 
 
 def connect(elm: Elm327, profiles: list[Profile] | None = None,
+            targets: tuple[int, ...] | None = None,
             status=lambda msg: print(msg, file=sys.stderr)) -> Connection:
     """Try each profile/target/session combination until DTC reads work.
 
-    Returns the first combination where the ECU gives any positive
-    response. Raises BusError if the whole ladder is exhausted.
+    `targets` overrides the addresses tried by the per-target KWP profiles
+    (used to aim at a non-engine module); profiles that don't use physical
+    addressing are left alone. Returns the first combination where the ECU
+    gives any positive response. Raises BusError if the ladder is exhausted.
     """
     attempts = []
     for profile in profiles or PROFILES:
-        for target in profile.targets:
+        profile_targets = profile.targets
+        if targets is not None and profile.targets != (None,):
+            profile_targets = targets
+        for target in profile_targets:
             label = profile.name + (f"/0x{target:02X}" if target is not None else "")
             status(f"  trying {label} ({profile.description}) ...")
             try:

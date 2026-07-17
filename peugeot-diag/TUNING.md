@@ -17,19 +17,30 @@ rather you spend the money once and keep the engine.
 ## The "is it already mapped?" check (Tune check tab / `psa-diag tune`)
 
 If you don't tune and just want to know whether someone already has, use
-this. It's fully read-only — it reads the ECU's identification and any
-reflash fingerprint and gives a best-effort verdict:
+this. It's fully read-only — it reads the ECU's identification (over
+KWP2000 service 0x1A) and any reflash fingerprint and gives a best-effort
+verdict:
 
-- **Looks STOCK** — the calibration number matches a known factory one.
 - **Almost certainly REMAPPED** — an ID string names a tuning tool/stage,
-  or the reflash fingerprint shows it was written after the factory.
-- **UNKNOWN** — the number isn't in our stock list (could be a remap, or
-  just a factory number we don't have on file), so compare it manually.
+  or the ECU's flash fingerprint (programming attempts/date/tester code)
+  shows it was written after the factory.
+- **Genuine factory ECU — no sign of a remap (but not proof)** — the
+  numbers match a known factory unit (the tool ships with verified stock
+  EDC15C2 numbers for the DW10 2.0 HDi) and no reflash fingerprint was
+  seen.
+- **UNKNOWN** — the numbers don't match a factory unit on file: could be a
+  remapped/replacement ECU, or just a number we don't list.
 
-Honest limits: a skilled tuner can keep the original calibration number,
-and a dealer software update can look like a remap. So treat this as a
-strong hint, not a certificate. The only definitive test is reading the
-flash and comparing to a stock image — which needs the bench tools above.
+The single most important honest limit, and the reason the "green" verdict
+is worded so carefully: **a normal map-only remap does NOT change the
+calibration number.** The tuner edits the fuel/boost maps and fixes the
+checksum, but the identity numbers are left alone so the ECU still reports
+factory values. So a recognised number tells you it's a genuine factory
+part — it does **not** prove the maps inside are untouched. The flash
+fingerprint is a better signal, but a bench/BDM flash can bypass it too.
+The only certain test is reading the full flash and comparing to a known
+stock image (which needs the bench tools above). Treat this check as a
+useful hint, never a certificate.
 
 ## What the tool reads (so you know what you've got)
 

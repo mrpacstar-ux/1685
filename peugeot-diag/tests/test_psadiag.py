@@ -120,15 +120,22 @@ class TuneCheckTests(unittest.TestCase):
         report = check_tune(req)
         self.assertEqual(report.verdict, "reflashed")
 
-    def test_known_stock_number_flags_stock(self):
-        from psadiag import tune
-        tune.STOCK_NUMBERS["9640845380"] = "DW10 90hp stock (test)"
-        try:
-            req = self._responder({0x94: "9640845380", 0x97: "EDC15C2"})
-            report = tune.check_tune(req)
-            self.assertEqual(report.verdict, "stock")
-        finally:
-            del tune.STOCK_NUMBERS["9640845380"]
+    def test_recognised_factory_number_is_clean_not_stock(self):
+        # A seeded real 306 2.0 HDi number: recognised => "clean" (genuine
+        # factory part, no remap evidence) — deliberately NOT "stock",
+        # because a map-only remap keeps this number.
+        from psadiag.tune import check_tune
+        req = self._responder({0x9B: "9642014880 1037359058", 0x97: "EDC15C2"})
+        report = check_tune(req)
+        self.assertEqual(report.verdict, "clean")
+        self.assertNotIn("STOCK", report.headline.upper())
+
+    def test_recognised_number_with_fingerprint_flags_reflash(self):
+        from psadiag.tune import check_tune
+        req = self._responder({0x9B: "9642014880", 0x97: "EDC15C2",
+                               0x9C: "attempts 03 date 21-06-14 tester 5AA"})
+        report = check_tune(req)
+        self.assertEqual(report.verdict, "reflashed")
 
     def test_unknown_number_is_unknown_not_false_positive(self):
         from psadiag.tune import check_tune
@@ -160,6 +167,15 @@ class LadderTests(unittest.TestCase):
         self.assertEqual([d.code for d in dtcs], ["P0135", "P0505"])
         self.assertTrue(clear_dtcs(conn))
         self.assertEqual(read_dtcs(conn), [])
+
+    def test_target_override_reaches_engine_only_at_its_address(self):
+        # The fake ECU answers only at 0x10. Aiming at the ABS addresses
+        # must fail; aiming at the engine address must connect.
+        from psadiag.elm327 import BusError
+        with self.assertRaises(BusError):
+            connect(self.elm, targets=(0x28, 0x18), status=lambda m: None)
+        conn = connect(self.elm, targets=(0x10,), status=lambda m: None)
+        self.assertEqual(conn.target, 0x10)
 
 
 if __name__ == "__main__":
