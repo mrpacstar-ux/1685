@@ -18,7 +18,28 @@ PP2000/Lexia did:
 4. `kwp-5baud-psa` — ISO **5-baud slow init** at the same PSA addresses
 5. `iso9141` — plain ISO 9141-2 (early EOBD petrol ECUs)
 
-## Install
+## Get the ready-to-run program (no Python needed)
+
+If you just want a single file to double-click on a Windows laptop:
+
+- **Download the built `psa-diag.exe`** from this repo's **Actions** tab →
+  latest *"Build psa-diag Windows executable"* run → **Artifacts** →
+  `psa-diag-windows`. Unzip it and double-click `psa-diag.exe`; the
+  scanner window opens. Copy that one file anywhere — a USB stick, the
+  desktop — it needs nothing installed.
+- **Or build it yourself on Windows:** grab this folder, make sure Python 3
+  is installed, and double-click **`build-exe.bat`**. It produces
+  `dist\psa-diag.exe`.
+
+First launch note: Windows SmartScreen / your antivirus may warn about an
+unrecognised app — that's normal for a self-built, unsigned `.exe`, not a
+sign of malware. Choose "More info → Run anyway", or build it yourself with
+`build-exe.bat` if you'd rather not trust a download.
+
+Double-clicking opens the GUI. From a Command Prompt the same file is the
+command-line tool: `psa-diag.exe scan`, `psa-diag.exe systems`, etc.
+
+## Install (from source)
 
 Needs Python 3.9+ and one package:
 
