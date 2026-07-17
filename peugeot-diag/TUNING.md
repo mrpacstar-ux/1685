@@ -14,6 +14,23 @@ rather you spend the money once and keep the engine.
   I'm withholding, it's that a safe diesel flasher can't be a generic
   script. Here's exactly why, and the real path that works.
 
+## The "is it already mapped?" check (Tune check tab / `psa-diag tune`)
+
+If you don't tune and just want to know whether someone already has, use
+this. It's fully read-only — it reads the ECU's identification and any
+reflash fingerprint and gives a best-effort verdict:
+
+- **Looks STOCK** — the calibration number matches a known factory one.
+- **Almost certainly REMAPPED** — an ID string names a tuning tool/stage,
+  or the reflash fingerprint shows it was written after the factory.
+- **UNKNOWN** — the number isn't in our stock list (could be a remap, or
+  just a factory number we don't have on file), so compare it manually.
+
+Honest limits: a skilled tuner can keep the original calibration number,
+and a dealer software update can look like a remap. So treat this as a
+strong hint, not a certificate. The only definitive test is reading the
+flash and comparing to a stock image — which needs the bench tools above.
+
 ## What the tool reads (so you know what you've got)
 
 Your 2.0 HDi runs a **Bosch EDC15C2** (DW10 engine). Two read-only things

@@ -129,6 +129,31 @@ def cmd_clear(args) -> int:
         elm.close()
 
 
+def cmd_tune(args) -> int:
+    from .tune import check_tune
+    if args.kkl:
+        conn = _connect_kkl(args)
+        request, close = conn.kline.request, conn.close
+    else:
+        elm = _open_adapter(args)
+        conn = _connect(args, elm)
+        request, close = elm.request, elm.close
+    try:
+        _status(f"Link up ({conn.describe()}); reading ECU identity ...")
+        report = check_tune(request, status=_status)
+        print(f"\n{report.headline}\n")
+        for reason in report.reasons:
+            print(f"  • {reason}")
+        if report.fields:
+            print("\nECU identification:")
+            for k, v in report.fields:
+                print(f"  {k:24} {v}")
+        print()
+        return 0
+    finally:
+        close()
+
+
 def cmd_terminal(args) -> int:
     """Raw terminal: type AT commands or hex requests directly."""
     elm = _open_adapter(args)
@@ -179,6 +204,7 @@ def main(argv=None) -> int:
                          help="clear without asking")
     p_clear.add_argument("--force", action="store_true",
                          help="send the clear even if no codes were read")
+    sub.add_parser("tune", help="check whether the ECU is already remapped")
     sub.add_parser("terminal", help="raw AT/hex terminal")
     sub.add_parser("gui", help="open the point-and-click window")
 
@@ -186,8 +212,8 @@ def main(argv=None) -> int:
     if args.command == "gui":
         from .gui import main as gui_main
         return gui_main()
-    handler = {"clear": cmd_clear, "terminal": cmd_terminal}.get(
-        args.command, cmd_scan)
+    handler = {"clear": cmd_clear, "tune": cmd_tune,
+               "terminal": cmd_terminal}.get(args.command, cmd_scan)
     try:
         return handler(args)
     except AdapterError as exc:

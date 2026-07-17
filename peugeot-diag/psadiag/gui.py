@@ -20,6 +20,7 @@ from .elm327 import AdapterError, BusError, Elm327
 from .kwp import NegativeResponse, strip_header
 from .live import PIDS, read_ecu_info, read_pid, supported_pids
 from .session import clear_dtcs, connect, read_dtcs
+from .tune import check_tune
 
 
 class ScannerSession:
@@ -217,6 +218,34 @@ class App:
         self.info_table.column("v", width=460, anchor="w")
         self.info_table.pack(fill="both", expand=True)
 
+        # ---- Tune check tab
+        tune = ttk.Frame(nb, padding=6)
+        nb.add(tune, text="  Tune check  ")
+        ttb = ttk.Frame(tune)
+        ttb.pack(fill="x", pady=(0, 6))
+        self.tune_btn = ttk.Button(ttb, text="Check if remapped",
+                                   command=self.on_tune)
+        self.tune_btn.pack(side="left")
+        ttk.Label(ttb, text="Read-only — reads the ECU's calibration number "
+                            "and reflash fingerprint.",
+                  foreground="#777").pack(side="left", padx=10)
+        self.tune_verdict = ttk.Label(
+            tune, text="Connect, then press the button.",
+            font=("TkDefaultFont", 12, "bold"), foreground="#777",
+            wraplength=760, justify="left")
+        self.tune_verdict.pack(fill="x", pady=(2, 6))
+        self.tune_reasons = tk.Text(tune, height=5, state="disabled",
+                                    wrap="word", relief="flat",
+                                    background=root.cget("background"))
+        self.tune_reasons.pack(fill="x", pady=(0, 6))
+        self.tune_table = ttk.Treeview(tune, columns=("k", "v"),
+                                       show="headings", height=8)
+        self.tune_table.heading("k", text="ECU field")
+        self.tune_table.heading("v", text="Value")
+        self.tune_table.column("k", width=220, anchor="w", stretch=False)
+        self.tune_table.column("v", width=500, anchor="w")
+        self.tune_table.pack(fill="both", expand=True)
+
         # ---- log + status
         ttk.Label(root, text="Connection log:", padding=(8, 2, 8, 0)
                   ).pack(anchor="w")
@@ -236,7 +265,7 @@ class App:
 
         self._action_buttons = (self.scan_btn, self.clear_sel_btn,
                                 self.clear_all_btn, self.live_btn,
-                                self.info_btn)
+                                self.info_btn, self.tune_btn)
         self._set_connected(False)
 
     # -------------------------------------------------------------- helpers
@@ -332,6 +361,10 @@ class App:
     def on_info(self):
         self._submit(self._job_info, "Reading ECU identification ...")
 
+    def on_tune(self):
+        self._submit(self._job_tune, "Checking calibration / reflash "
+                                     "fingerprint ...")
+
     def _live_timer(self):
         if self.live_on and self.session and not self.busy \
                 and self.jobq.empty():
@@ -426,6 +459,25 @@ class App:
         put(("done", "ECU identification read." if info else
              "This ECU offers no identification strings."))
 
+    def _job_tune(self):
+        put = self.msgq.put
+        report = check_tune(self.session.request, lambda m: put(("log", m)))
+        put(("tune", report))
+        put(("done", report.headline))
+
+    def _show_tune(self, report):
+        colour = {"stock": "#1a7f37", "reflashed": "#b00020",
+                  "unknown": "#9a6700"}.get(report.verdict, "#777")
+        self.tune_verdict.configure(text=report.headline, foreground=colour)
+        self.tune_reasons.configure(state="normal")
+        self.tune_reasons.delete("1.0", "end")
+        self.tune_reasons.insert("end", "\n".join(f"• {r}"
+                                                  for r in report.reasons))
+        self.tune_reasons.configure(state="disabled")
+        self.tune_table.delete(*self.tune_table.get_children())
+        for k, v in report.fields:
+            self.tune_table.insert("", "end", values=(k, v))
+
     # ------------------------------------------------------------- polling
 
     def _poll(self):
@@ -459,6 +511,8 @@ class App:
                         *self.info_table.get_children())
                     for k, v in payload:
                         self.info_table.insert("", "end", values=(k, v))
+                elif kind == "tune":
+                    self._show_tune(payload)
                 elif kind == "done":
                     self._set_busy(False, payload)
         except queue.Empty:

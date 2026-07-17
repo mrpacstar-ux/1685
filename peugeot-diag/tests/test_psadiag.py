@@ -7,7 +7,7 @@ exactly the behaviour that defeats generic scanners.
 
 import unittest
 
-from psadiag.elm327 import Elm327
+from psadiag.elm327 import BusError, Elm327
 from psadiag.kwp import decode_dtc_bytes, parse_dtc_reply
 from psadiag.session import clear_dtcs, connect, read_dtcs
 
@@ -99,6 +99,48 @@ class KLineFramingTests(unittest.TestCase):
         from psadiag.kline import KLine
         raw = bytes.fromhex("55EF8F")   # sync/key bytes, not a KWP frame
         self.assertEqual(KLine._split_frames(raw), [raw])
+
+
+class TuneCheckTests(unittest.TestCase):
+    """The read-only remap heuristic (no serial port involved)."""
+
+    @staticmethod
+    def _responder(table):
+        """Build a request() that answers 1A <id> from a {id: text} table."""
+        def request(payload):
+            if payload[0] == 0x1A and payload[1] in table:
+                data = table[payload[1]].encode("ascii")
+                return [bytes([0x5A, payload[1]]) + data]
+            raise BusError("no data")
+        return request
+
+    def test_tuner_string_flags_remap(self):
+        from psadiag.tune import check_tune
+        req = self._responder({0x94: "STAGE1 TUNED", 0x97: "EDC15C2"})
+        report = check_tune(req)
+        self.assertEqual(report.verdict, "reflashed")
+
+    def test_known_stock_number_flags_stock(self):
+        from psadiag import tune
+        tune.STOCK_NUMBERS["9640845380"] = "DW10 90hp stock (test)"
+        try:
+            req = self._responder({0x94: "9640845380", 0x97: "EDC15C2"})
+            report = tune.check_tune(req)
+            self.assertEqual(report.verdict, "stock")
+        finally:
+            del tune.STOCK_NUMBERS["9640845380"]
+
+    def test_unknown_number_is_unknown_not_false_positive(self):
+        from psadiag.tune import check_tune
+        req = self._responder({0x94: "9612345680", 0x97: "EDC15C2"})
+        report = check_tune(req)
+        self.assertEqual(report.verdict, "unknown")
+
+    def test_no_identity_is_handled(self):
+        from psadiag.tune import check_tune
+        report = check_tune(self._responder({}))
+        self.assertEqual(report.verdict, "unknown")
+        self.assertTrue(report.headline)
 
 
 class LadderTests(unittest.TestCase):
